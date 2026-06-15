@@ -8,7 +8,7 @@ from passlib.context import CryptContext
 from .config import settings
 from .database import SessionLocal
 from .models.user import User, UserRole
-from .routers import auth
+from .routers import auth, users
 
 
 def _run_migrations() -> None:
@@ -50,6 +50,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(users.router)
 
 
 @app.get("/health")
