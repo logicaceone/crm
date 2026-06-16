@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { apiFetch } from '../lib/api'
 
 interface ChannelStat {
@@ -32,6 +33,7 @@ const emptyForm = { name: '', tg_link: '', description: '' }
 
 export function Channels() {
   const { user } = useAuth()
+  const toast = useToast()
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channels, setChannels] = useState<Channel[]>([])
@@ -78,13 +80,16 @@ export function Channels() {
       })
       if (!res.ok) {
         const d = await res.json()
-        setCreateError(d.detail ?? 'Ошибка создания')
+        const msg = d.detail ?? 'Ошибка создания'
+        setCreateError(msg)
+        toast.error(msg)
         return
       }
       const created: Channel = { ...(await res.json()), last_subscriber_stat: null, last_views_stat: null, stat_30d_ago: null }
       setChannels(prev => [...prev, created])
       setShowCreate(false)
       setCreateForm(emptyForm)
+      toast.success('Канал добавлен')
     } finally {
       setCreateSubmitting(false)
     }
@@ -112,7 +117,9 @@ export function Channels() {
       })
       if (!res.ok) {
         const d = await res.json()
-        setEditError(d.detail ?? 'Ошибка сохранения')
+        const msg = d.detail ?? 'Ошибка сохранения'
+        setEditError(msg)
+        toast.error(msg)
         return
       }
       const updated: Channel = await res.json()
@@ -124,6 +131,7 @@ export function Channels() {
         )
       )
       setEditChannel(null)
+      toast.success('Канал сохранён')
     } finally {
       setEditSubmitting(false)
     }
@@ -134,6 +142,9 @@ export function Channels() {
     const res = await apiFetch(`/api/channels/${ch.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setChannels(prev => prev.filter(c => c.id !== ch.id))
+      toast.success('Канал удалён')
+    } else {
+      toast.error('Не удалось удалить канал')
     }
   }
 

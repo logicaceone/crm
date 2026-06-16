@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { apiFetch } from '../lib/api'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ const emptyForm = {
 
 export function Purchases() {
   const { user } = useAuth()
+  const toast = useToast()
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [extChannels, setExtChannels] = useState<ExternalChannel[]>([])
@@ -181,7 +183,9 @@ export function Purchases() {
       })
       if (!res.ok) {
         const d = await res.json()
-        setCreateError(d.detail ?? 'Ошибка создания')
+        const msg = d.detail ?? 'Ошибка создания'
+        setCreateError(msg)
+        toast.error(msg)
         return
       }
       const created: Purchase = await res.json()
@@ -193,6 +197,7 @@ export function Purchases() {
       )
       setShowCreate(false)
       setCreateForm(emptyForm)
+      toast.success('Закупка добавлена')
     } finally {
       setCreating(false)
     }
@@ -234,13 +239,16 @@ export function Purchases() {
       })
       if (!res.ok) {
         const d = await res.json()
-        setEditError(d.detail ?? 'Ошибка сохранения')
+        const msg = d.detail ?? 'Ошибка сохранения'
+        setEditError(msg)
+        toast.error(msg)
         return
       }
       const updated: Purchase = await res.json()
       setPurchases(prev => prev.map(p => (p.id === updated.id ? updated : p)))
       setEditPurchase(null)
       loadSummary()
+      toast.success('Закупка сохранена')
     } finally {
       setSaving(false)
     }
@@ -256,6 +264,9 @@ export function Purchases() {
       setSummary(prev =>
         prev ? { ...prev, total: prev.total - p.price, count: prev.count - 1 } : prev
       )
+      toast.success('Закупка удалена')
+    } else {
+      toast.error('Не удалось удалить закупку')
     }
   }
 

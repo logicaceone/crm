@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { apiFetch } from '../lib/api'
 
 interface ChannelStat {
@@ -57,6 +58,7 @@ export function ChannelDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const toast = useToast()
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channel, setChannel] = useState<Channel | null>(null)
@@ -104,13 +106,16 @@ export function ChannelDetail() {
       })
       if (!res.ok) {
         const d = await res.json()
-        setFormError(d.detail ?? 'Ошибка')
+        const msg = d.detail ?? 'Ошибка'
+        setFormError(msg)
+        toast.error(msg)
         return
       }
       const newStat: ChannelStat = await res.json()
       setStats(prev => [...prev, newStat].sort((a, b) => a.date.localeCompare(b.date)))
       setShowAdd(false)
       setForm({ date: toIso(new Date()), avg_views_per_post: '' })
+      toast.success('Снапшот добавлен')
     } finally {
       setSubmitting(false)
     }

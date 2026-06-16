@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { apiFetch } from '../lib/api'
 
 type Role = 'root' | 'admin' | 'manager' | 'viewer'
@@ -45,6 +46,7 @@ function canDeleteUser(me: UserItem, target: UserItem): boolean {
 
 export function Users() {
   const { user: me } = useAuth()
+  const toast = useToast()
   const [users, setUsers] = useState<UserItem[]>([])
   const [fetchError, setFetchError] = useState('')
 
@@ -78,11 +80,17 @@ export function Users() {
         method: 'POST',
         body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }),
       })
-      if (!res.ok) { setModalError((await res.json()).detail ?? 'Ошибка'); return }
+      if (!res.ok) {
+        const msg = (await res.json()).detail ?? 'Ошибка'
+        setModalError(msg)
+        toast.error(msg)
+        return
+      }
       const created: UserItem = await res.json()
       setUsers(prev => [...prev, created])
       setShowModal(false)
       setNewUsername(''); setNewPassword(''); setNewRole('viewer')
+      toast.success(`Пользователь ${created.username} создан`)
     } finally { setModalSubmitting(false) }
   }
 
@@ -107,17 +115,28 @@ export function Users() {
         method: 'PATCH',
         body: JSON.stringify(body),
       })
-      if (!res.ok) { setEditError((await res.json()).detail ?? 'Ошибка'); return }
+      if (!res.ok) {
+        const msg = (await res.json()).detail ?? 'Ошибка'
+        setEditError(msg)
+        toast.error(msg)
+        return
+      }
       const updated: UserItem = await res.json()
       setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
       setEditUser(null)
+      toast.success('Пользователь сохранён')
     } finally { setEditSubmitting(false) }
   }
 
   async function handleDelete(u: UserItem) {
     if (!confirm(`Удалить пользователя "${u.username}"?`)) return
     const res = await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' })
-    if (res.ok || res.status === 204) setUsers(prev => prev.filter(x => x.id !== u.id))
+    if (res.ok || res.status === 204) {
+      setUsers(prev => prev.filter(x => x.id !== u.id))
+      toast.success(`Пользователь ${u.username} удалён`)
+    } else {
+      toast.error('Не удалось удалить пользователя')
+    }
   }
 
   if (!me) return null

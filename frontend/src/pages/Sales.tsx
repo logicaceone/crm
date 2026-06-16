@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { apiFetch } from '../lib/api'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ const emptyForm = {
 
 export function Sales() {
   const { user } = useAuth()
+  const toast = useToast()
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channels, setChannels] = useState<Channel[]>([])
@@ -163,7 +165,9 @@ export function Sales() {
       })
       if (!res.ok) {
         const d = await res.json()
-        setCreateError(d.detail ?? 'Ошибка создания')
+        const msg = d.detail ?? 'Ошибка создания'
+        setCreateError(msg)
+        toast.error(msg)
         return
       }
       const created: Sale = await res.json()
@@ -175,6 +179,7 @@ export function Sales() {
       )
       setShowCreate(false)
       setCreateForm(emptyForm)
+      toast.success('Продажа добавлена')
     } finally {
       setCreating(false)
     }
@@ -218,13 +223,16 @@ export function Sales() {
       })
       if (!res.ok) {
         const d = await res.json()
-        setEditError(d.detail ?? 'Ошибка сохранения')
+        const msg = d.detail ?? 'Ошибка сохранения'
+        setEditError(msg)
+        toast.error(msg)
         return
       }
       const updated: Sale = await res.json()
       setSales(prev => prev.map(s => (s.id === updated.id ? updated : s)))
       setEditSale(null)
       loadSummary()
+      toast.success('Продажа сохранена')
     } finally {
       setSaving(false)
     }
@@ -240,6 +248,9 @@ export function Sales() {
       setSummary(prev =>
         prev ? { ...prev, total: prev.total - s.price, count: prev.count - 1 } : prev
       )
+      toast.success('Продажа удалена')
+    } else {
+      toast.error('Не удалось удалить продажу')
     }
   }
 
