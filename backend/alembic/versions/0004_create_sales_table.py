@@ -17,9 +17,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    sale_status = sa.Enum("agreed", "placed", "paid", "cancelled", name="sale_status")
-    sale_status.create(op.get_bind())
-
     op.create_table(
         "ad_sales",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -35,7 +32,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "status",
-            sa.Enum("agreed", "placed", "paid", "cancelled", name="sale_status", create_type=False),
+            sa.Enum("agreed", "placed", "paid", "cancelled", name="sale_status"),
             nullable=False,
             server_default="agreed",
         ),

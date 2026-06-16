@@ -27,11 +27,6 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_external_channels_id"), "external_channels", ["id"], unique=False)
 
-    ad_format = sa.Enum("post", "repost", "integration", "other", name="ad_format")
-    purchase_status = sa.Enum("planned", "placed", "cancelled", name="purchase_status")
-    ad_format.create(op.get_bind())
-    purchase_status.create(op.get_bind())
-
     op.create_table(
         "ad_purchases",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -39,8 +34,8 @@ def upgrade() -> None:
         sa.Column("date", sa.Date(), nullable=False),
         sa.Column("price", sa.Float(), nullable=False),
         sa.Column("currency", sa.String(10), nullable=False, server_default="RUB"),
-        sa.Column("format", sa.Enum("post", "repost", "integration", "other", name="ad_format", create_type=False), nullable=False),
-        sa.Column("status", sa.Enum("planned", "placed", "cancelled", name="purchase_status", create_type=False), nullable=False, server_default="planned"),
+        sa.Column("format", sa.Enum("post", "repost", "integration", "other", name="ad_format"), nullable=False),
+        sa.Column("status", sa.Enum("planned", "placed", "cancelled", name="purchase_status"), nullable=False, server_default="planned"),
         sa.Column("comment", sa.Text(), nullable=True),
         sa.Column("created_by", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
