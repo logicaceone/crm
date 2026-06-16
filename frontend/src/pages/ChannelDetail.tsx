@@ -192,7 +192,7 @@ export function ChannelDetail() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} width={60} />
-                  <Tooltip formatter={(v: number) => v.toLocaleString()} />
+                  <Tooltip formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)} />
                   <Line type="monotone" dataKey="subscribers" stroke="#2563eb" dot={false} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
@@ -204,7 +204,7 @@ export function ChannelDetail() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} width={60} />
-                  <Tooltip formatter={(v: number) => v.toLocaleString()} />
+                  <Tooltip formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)} />
                   <Line type="monotone" dataKey="views" stroke="#16a34a" dot={false} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
