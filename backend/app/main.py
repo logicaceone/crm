@@ -24,12 +24,17 @@ def _run_migrations() -> None:
 def _seed_admin() -> None:
     db = SessionLocal()
     try:
-        if db.query(User).filter(User.username == "admin").first():
+        if db.query(User).filter(User.role == UserRole.root).first():
+            return
+        existing = db.query(User).filter(User.username == "admin").first()
+        if existing:
+            existing.role = UserRole.root
+            db.commit()
             return
         db.add(User(
             username="admin",
             password_hash=bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode(),
-            role=UserRole.admin,
+            role=UserRole.root,
         ))
         db.commit()
     finally:

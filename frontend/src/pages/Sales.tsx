@@ -92,7 +92,7 @@ const emptyForm = {
 
 export function Sales() {
   const { user } = useAuth()
-  const canWrite = user?.role === 'admin' || user?.role === 'manager'
+  const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channels, setChannels] = useState<Channel[]>([])
   const [sales, setSales] = useState<Sale[]>([])

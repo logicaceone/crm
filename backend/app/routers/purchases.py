@@ -19,8 +19,8 @@ from .auth import get_current_user, require_roles
 router_ext = APIRouter(prefix="/external-channels", tags=["external-channels"])
 router = APIRouter(prefix="/purchases", tags=["purchases"])
 
-read_access = require_roles([UserRole.admin, UserRole.manager, UserRole.viewer])
-write_access = require_roles([UserRole.admin, UserRole.manager])
+read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, UserRole.viewer])
+write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
 
 
 # ── External channels ────────────────────────────────────────────────────────

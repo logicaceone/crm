@@ -17,8 +17,8 @@ from .auth import get_current_user, require_roles
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
-read_access = require_roles([UserRole.admin, UserRole.manager, UserRole.viewer])
-write_access = require_roles([UserRole.admin, UserRole.manager])
+read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, UserRole.viewer])
+write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
 
 
 def _apply_filters(q, channel_id, status, client_name, from_, to):

@@ -9,7 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { setHandle401 } from '../lib/api'
 
-export type Role = 'admin' | 'manager' | 'viewer'
+export type Role = 'root' | 'admin' | 'manager' | 'viewer'
 
 interface User {
   id: number

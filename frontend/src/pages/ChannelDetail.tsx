@@ -57,7 +57,7 @@ export function ChannelDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const canWrite = user?.role === 'admin' || user?.role === 'manager'
+  const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channel, setChannel] = useState<Channel | null>(null)
   const [stats, setStats] = useState<ChannelStat[]>([])

@@ -85,7 +85,7 @@ const emptyForm = {
 
 export function Purchases() {
   const { user } = useAuth()
-  const canWrite = user?.role === 'admin' || user?.role === 'manager'
+  const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [extChannels, setExtChannels] = useState<ExternalChannel[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])

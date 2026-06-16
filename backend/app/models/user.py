@@ -5,6 +5,7 @@ from ..database import Base
 
 
 class UserRole(str, enum.Enum):
+    root = "root"
     admin = "admin"
     manager = "manager"
     viewer = "viewer"

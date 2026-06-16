@@ -18,8 +18,8 @@ from .auth import get_current_user, require_roles
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
-read_access = require_roles([UserRole.admin, UserRole.manager, UserRole.viewer])
-write_access = require_roles([UserRole.admin, UserRole.manager])
+read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, UserRole.viewer])
+write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
 
 
 def _last_subscriber_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:

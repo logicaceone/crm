@@ -10,13 +10,13 @@ from .auth import require_roles
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-admin_only = require_roles([UserRole.admin])
+root_or_admin = require_roles([UserRole.root, UserRole.admin])
 
 
 @router.get("", response_model=list[UserResponse])
 def list_users(
     db: Session = Depends(get_db),
-    _: User = Depends(admin_only),
+    _: User = Depends(root_or_admin),
 ):
     return db.query(User).order_by(User.created_at).all()
 
@@ -25,8 +25,12 @@ def list_users(
 def create_user(
     data: CreateUserRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(admin_only),
+    me: User = Depends(root_or_admin),
 ):
+    if data.role == UserRole.root:
+        raise HTTPException(status_code=403, detail="Cannot create root user")
+    if data.role == UserRole.admin and me.role != UserRole.root:
+        raise HTTPException(status_code=403, detail="Only root can create admin users")
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(status_code=409, detail="Username already exists")
     user = User(
@@ -45,11 +49,19 @@ def update_user(
     user_id: int,
     data: UpdateUserRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(admin_only),
+    me: User = Depends(root_or_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.role == UserRole.root and me.role != UserRole.root:
+        raise HTTPException(status_code=403, detail="Cannot edit root user")
+    if user.role == UserRole.admin and me.role == UserRole.admin and user.id != me.id:
+        raise HTTPException(status_code=403, detail="Admin cannot edit other admin users")
+    if data.role == UserRole.root:
+        raise HTTPException(status_code=403, detail="Cannot assign root role")
+    if data.role == UserRole.admin and me.role != UserRole.root:
+        raise HTTPException(status_code=403, detail="Only root can assign admin role")
     if data.role is not None:
         user.role = data.role
     if data.password is not None:
@@ -63,12 +75,16 @@ def update_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(admin_only),
+    me: User = Depends(root_or_admin),
 ):
-    if user_id == admin.id:
+    if user_id == me.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.role == UserRole.root:
+        raise HTTPException(status_code=403, detail="Cannot delete root user")
+    if user.role == UserRole.admin and me.role != UserRole.root:
+        raise HTTPException(status_code=403, detail="Only root can delete admin users")
     db.delete(user)
     db.commit()

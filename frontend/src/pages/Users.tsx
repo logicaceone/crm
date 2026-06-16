@@ -2,56 +2,71 @@ import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { apiFetch } from '../lib/api'
 
-interface User {
+type Role = 'root' | 'admin' | 'manager' | 'viewer'
+
+interface UserItem {
   id: number
   username: string
-  role: 'admin' | 'manager' | 'viewer'
+  role: Role
   created_at: string
 }
 
-const ROLES = ['admin', 'manager', 'viewer'] as const
+const ROLE_LABEL: Record<Role, string> = {
+  root: 'Root',
+  admin: 'Admin',
+  manager: 'Manager',
+  viewer: 'Viewer',
+}
+
+const ROLE_COLOR: Record<Role, string> = {
+  root:    '#7c3aed',
+  admin:   '#C07D4A',
+  manager: '#16a34a',
+  viewer:  '#8C7B6E',
+}
+
+function availableRolesToAssign(myRole: Role): Role[] {
+  if (myRole === 'root') return ['admin', 'manager', 'viewer']
+  return ['manager', 'viewer']
+}
+
+function canEditUser(me: UserItem, target: UserItem): boolean {
+  if (target.role === 'root') return me.role === 'root' && me.id === target.id
+  if (target.role === 'admin') return me.role === 'root' || me.id === target.id
+  return true
+}
+
+function canDeleteUser(me: UserItem, target: UserItem): boolean {
+  if (me.id === target.id) return false
+  if (target.role === 'root') return false
+  if (target.role === 'admin') return me.role === 'root'
+  return true
+}
 
 export function Users() {
   const { user: me } = useAuth()
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<UserItem[]>([])
   const [fetchError, setFetchError] = useState('')
+
   const [showModal, setShowModal] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
-  const [newRole, setNewRole] = useState<'admin' | 'manager' | 'viewer'>('viewer')
+  const [newRole, setNewRole] = useState<Role>('viewer')
   const [modalError, setModalError] = useState('')
   const [modalSubmitting, setModalSubmitting] = useState(false)
 
-  useEffect(() => {
-    loadUsers()
-  }, [])
+  const [editUser, setEditUser] = useState<UserItem | null>(null)
+  const [editPassword, setEditPassword] = useState('')
+  const [editRole, setEditRole] = useState<Role>('viewer')
+  const [editError, setEditError] = useState('')
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  useEffect(() => { loadUsers() }, [])
 
   async function loadUsers() {
     const res = await apiFetch('/api/users')
-    if (res.ok) {
-      setUsers(await res.json())
-    } else {
-      setFetchError('Failed to load users')
-    }
-  }
-
-  async function handleRoleChange(userId: number, role: 'admin' | 'manager' | 'viewer') {
-    const res = await apiFetch(`/api/users/${userId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ role }),
-    })
-    if (res.ok) {
-      const updated: User = await res.json()
-      setUsers(prev => prev.map(u => (u.id === userId ? updated : u)))
-    }
-  }
-
-  async function handleDelete(userId: number, username: string) {
-    if (!confirm(`Delete user "${username}"?`)) return
-    const res = await apiFetch(`/api/users/${userId}`, { method: 'DELETE' })
-    if (res.ok || res.status === 204) {
-      setUsers(prev => prev.filter(u => u.id !== userId))
-    }
+    if (res.ok) setUsers(await res.json())
+    else setFetchError('Не удалось загрузить пользователей')
   }
 
   async function handleCreate(e: FormEvent) {
@@ -63,40 +78,67 @@ export function Users() {
         method: 'POST',
         body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }),
       })
-      if (!res.ok) {
-        const data = await res.json()
-        setModalError(data.detail ?? 'Failed to create user')
-        return
-      }
-      const created: User = await res.json()
+      if (!res.ok) { setModalError((await res.json()).detail ?? 'Ошибка'); return }
+      const created: UserItem = await res.json()
       setUsers(prev => [...prev, created])
       setShowModal(false)
-      setNewUsername('')
-      setNewPassword('')
-      setNewRole('viewer')
-    } finally {
-      setModalSubmitting(false)
-    }
+      setNewUsername(''); setNewPassword(''); setNewRole('viewer')
+    } finally { setModalSubmitting(false) }
+  }
+
+  function openEdit(u: UserItem) {
+    setEditUser(u)
+    setEditRole(u.role === 'root' ? 'root' : u.role)
+    setEditPassword('')
+    setEditError('')
+  }
+
+  async function handleEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!editUser) return
+    setEditError('')
+    setEditSubmitting(true)
+    const body: Record<string, string> = {}
+    if (editRole !== editUser.role) body.role = editRole
+    if (editPassword) body.password = editPassword
+    if (!Object.keys(body).length) { setEditUser(null); setEditSubmitting(false); return }
+    try {
+      const res = await apiFetch(`/api/users/${editUser.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) { setEditError((await res.json()).detail ?? 'Ошибка'); return }
+      const updated: UserItem = await res.json()
+      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
+      setEditUser(null)
+    } finally { setEditSubmitting(false) }
+  }
+
+  async function handleDelete(u: UserItem) {
+    if (!confirm(`Удалить пользователя "${u.username}"?`)) return
+    const res = await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' })
+    if (res.ok || res.status === 204) setUsers(prev => prev.filter(x => x.id !== u.id))
   }
 
   if (!me) return null
+  const myRole = me.role as Role
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ margin: 0 }}>Пользователи</h1>
-        <button onClick={() => setShowModal(true)}>+ Add User</button>
+        <button onClick={() => { setShowModal(true); setModalError('') }}>+ Добавить</button>
       </div>
 
-      {fetchError && <div style={{ color: 'red', marginBottom: 12 }}>{fetchError}</div>}
+      {fetchError && <div style={{ color: '#dc2626', marginBottom: 12 }}>{fetchError}</div>}
 
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={thStyle}>Username</th>
-            <th style={thStyle}>Role</th>
-            <th style={thStyle}>Created At</th>
-            <th style={thStyle}>Actions</th>
+            <th style={thStyle}>Пользователь</th>
+            <th style={thStyle}>Роль</th>
+            <th style={thStyle}>Создан</th>
+            <th style={thStyle}>Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -104,66 +146,105 @@ export function Users() {
             <tr key={u.id}>
               <td style={tdStyle}>
                 {u.username}
-                {u.id === me.id && <span style={{ marginLeft: 8, color: '#888', fontSize: 12 }}>(you)</span>}
+                {u.id === me.id && <span style={{ marginLeft: 8, color: '#D4B896', fontSize: 12 }}>(вы)</span>}
               </td>
               <td style={tdStyle}>
-                <select
-                  value={u.role}
-                  onChange={e => handleRoleChange(u.id, e.target.value as 'admin' | 'manager' | 'viewer')}
-                  disabled={u.id === me.id}
-                >
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <span style={{
+                  display: 'inline-block',
+                  padding: '2px 10px',
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: ROLE_COLOR[u.role] + '18',
+                  color: ROLE_COLOR[u.role],
+                  border: `1px solid ${ROLE_COLOR[u.role]}44`,
+                }}>
+                  {ROLE_LABEL[u.role]}
+                </span>
               </td>
+              <td style={tdStyle}>{new Date(u.created_at).toLocaleDateString('ru-RU')}</td>
               <td style={tdStyle}>
-                {new Date(u.created_at).toLocaleString()}
-              </td>
-              <td style={tdStyle}>
-                <button
-                  onClick={() => handleDelete(u.id, u.username)}
-                  disabled={u.id === me.id}
-                  style={{ color: u.id === me.id ? '#bbb' : '#d00', cursor: u.id === me.id ? 'not-allowed' : 'pointer' }}
-                  title={u.id === me.id ? "Can't delete yourself" : `Delete ${u.username}`}
-                >
-                  Delete
-                </button>
+                {canEditUser(me as UserItem, u) && (
+                  <button onClick={() => openEdit(u)} style={{ marginRight: 8, fontSize: 13, padding: '5px 12px' }}>
+                    Редакт.
+                  </button>
+                )}
+                {canDeleteUser(me as UserItem, u) && (
+                  <button
+                    onClick={() => handleDelete(u)}
+                    style={{ background: 'transparent', color: '#dc2626', border: '1px solid #dc262644', fontSize: 13, padding: '5px 12px' }}
+                  >
+                    Удалить
+                  </button>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
+      {/* Create modal */}
       {showModal && (
         <div style={overlayStyle}>
           <div style={modalStyle}>
-            <h2 style={{ margin: '0 0 16px' }}>Add User</h2>
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {modalError && <div style={{ color: 'red', fontSize: 14 }}>{modalError}</div>}
-              <input
-                placeholder="Username"
-                value={newUsername}
-                onChange={e => setNewUsername(e.target.value)}
-                required
-                autoFocus
-              />
-              <input
-                type="password"
-                placeholder="Password"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                required
-              />
-              <select
-                value={newRole}
-                onChange={e => setNewRole(e.target.value as 'admin' | 'manager' | 'viewer')}
-              >
-                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                <button type="button" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" disabled={modalSubmitting}>
-                  {modalSubmitting ? 'Creating…' : 'Create'}
-                </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Добавить пользователя</h2>
+              <button onClick={() => setShowModal(false)} style={closeBtnStyle}>×</button>
+            </div>
+            <form onSubmit={handleCreate} style={formStyle}>
+              {modalError && <div style={errStyle}>{modalError}</div>}
+              <label style={labelStyle}>
+                Имя пользователя
+                <input value={newUsername} onChange={e => setNewUsername(e.target.value)} required autoFocus />
+              </label>
+              <label style={labelStyle}>
+                Пароль
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+              </label>
+              <label style={labelStyle}>
+                Роль
+                <select value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
+                  {availableRolesToAssign(myRole).map(r => (
+                    <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                  ))}
+                </select>
+              </label>
+              <div style={actionsStyle}>
+                <button type="button" onClick={() => setShowModal(false)}>Отмена</button>
+                <button type="submit" disabled={modalSubmitting}>{modalSubmitting ? 'Создание…' : 'Создать'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editUser && (
+        <div style={overlayStyle}>
+          <div style={modalStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Редактировать: {editUser.username}</h2>
+              <button onClick={() => setEditUser(null)} style={closeBtnStyle}>×</button>
+            </div>
+            <form onSubmit={handleEdit} style={formStyle}>
+              {editError && <div style={errStyle}>{editError}</div>}
+              {editUser.role !== 'root' && (
+                <label style={labelStyle}>
+                  Роль
+                  <select value={editRole} onChange={e => setEditRole(e.target.value as Role)}>
+                    {availableRolesToAssign(myRole).map(r => (
+                      <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label style={labelStyle}>
+                Новый пароль <span style={{ fontWeight: 400, color: '#8C7B6E' }}>(оставьте пустым если не менять)</span>
+                <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoFocus />
+              </label>
+              <div style={actionsStyle}>
+                <button type="button" onClick={() => setEditUser(null)}>Отмена</button>
+                <button type="submit" disabled={editSubmitting}>{editSubmitting ? 'Сохранение…' : 'Сохранить'}</button>
               </div>
             </form>
           </div>
@@ -175,20 +256,24 @@ export function Users() {
 
 const thStyle: CSSProperties = {
   textAlign: 'left',
-  padding: '8px 12px',
-  borderBottom: '2px solid #ddd',
+  padding: '10px 14px',
+  borderBottom: '1px solid #E8DDD3',
   fontWeight: 600,
+  fontSize: 13,
+  background: '#F0E8DE',
+  color: '#8C7B6E',
 }
 
 const tdStyle: CSSProperties = {
-  padding: '8px 12px',
-  borderBottom: '1px solid #eee',
+  padding: '9px 14px',
+  borderBottom: '1px solid #E8DDD3',
+  fontSize: 14,
 }
 
 const overlayStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0,0,0,0.45)',
+  background: 'rgba(44,43,40,0.5)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -197,8 +282,44 @@ const overlayStyle: CSSProperties = {
 
 const modalStyle: CSSProperties = {
   background: '#FEFEFE',
-  borderRadius: 8,
-  padding: 24,
-  width: 360,
-  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+  borderRadius: 10,
+  padding: 28,
+  width: 400,
+  boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
+}
+
+const closeBtnStyle: CSSProperties = {
+  background: 'none',
+  border: 'none',
+  fontSize: 22,
+  cursor: 'pointer',
+  lineHeight: 1,
+  padding: 0,
+}
+
+const formStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+}
+
+const labelStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  fontSize: 13,
+  fontWeight: 500,
+  color: '#2C2B28',
+}
+
+const errStyle: CSSProperties = {
+  color: '#dc2626',
+  fontSize: 14,
+}
+
+const actionsStyle: CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  justifyContent: 'flex-end',
+  marginTop: 4,
 }

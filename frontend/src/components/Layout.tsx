@@ -9,12 +9,12 @@ interface MenuItem {
 }
 
 const MENU: MenuItem[] = [
-  { to: '/dashboard', label: 'Дашборд', roles: ['admin', 'manager', 'viewer'] },
-  { to: '/channels', label: 'Каналы', roles: ['admin', 'manager'] },
-  { to: '/purchases', label: 'Закупки', roles: ['admin', 'manager'] },
-  { to: '/sales', label: 'Продажи', roles: ['admin', 'manager'] },
-  { to: '/budget', label: 'Бюджет', roles: ['admin', 'manager'] },
-  { to: '/users', label: 'Пользователи', roles: ['admin'] },
+  { to: '/dashboard', label: 'Дашборд', roles: ['root', 'admin', 'manager', 'viewer'] },
+  { to: '/channels', label: 'Каналы', roles: ['root', 'admin', 'manager'] },
+  { to: '/purchases', label: 'Закупки', roles: ['root', 'admin', 'manager'] },
+  { to: '/sales', label: 'Продажи', roles: ['root', 'admin', 'manager'] },
+  { to: '/budget', label: 'Бюджет', roles: ['root', 'admin', 'manager'] },
+  { to: '/users', label: 'Пользователи', roles: ['root', 'admin'] },
 ]
 
 export function Layout() {
