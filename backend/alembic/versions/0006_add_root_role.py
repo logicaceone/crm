@@ -13,14 +13,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # ADD VALUE cannot be used in the same transaction — promotion of admin→root
+    # is handled by _seed_admin() in main.py after this transaction commits.
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'root' BEFORE 'admin'")
-    # Promote existing 'admin' username to root if no root exists yet
-    op.execute("""
-        UPDATE users SET role = 'root'
-        WHERE username = 'admin'
-          AND role = 'admin'
-          AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'root')
-    """)
 
 
 def downgrade() -> None:
