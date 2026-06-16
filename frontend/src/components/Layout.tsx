@@ -33,7 +33,7 @@ export function Layout() {
   return (
     <div style={shellStyle}>
       <aside style={sidebarStyle}>
-        <div style={brandStyle}>CRM</div>
+        <div style={brandStyle}>CRM TG</div>
         <nav style={navStyle}>
           {items.map(item => (
             <NavLink
@@ -67,6 +67,10 @@ export function Layout() {
 const shellStyle: CSSProperties = {
   display: 'flex',
   minHeight: '100vh',
+  width: '100%',
+  position: 'absolute',
+  top: 0,
+  left: 0,
 }
 
 const sidebarStyle: CSSProperties = {
@@ -97,9 +101,9 @@ const navStyle: CSSProperties = {
 const linkStyle: CSSProperties = {
   color: '#D4B896',
   textDecoration: 'none',
-  padding: '8px 12px',
-  borderRadius: 6,
-  fontSize: 13,
+  padding: '9px 14px',
+  borderRadius: 8,
+  fontSize: 14,
   fontWeight: 500,
   transition: 'background 0.15s, color 0.15s',
 }
@@ -114,10 +118,11 @@ const logoutBtnStyle: CSSProperties = {
   background: 'transparent',
   border: '1px solid #3D3A35',
   color: '#D4B896',
-  borderRadius: 6,
-  padding: '6px 0',
-  fontSize: 12,
+  borderRadius: 8,
+  padding: '7px 0',
+  fontSize: 13,
   cursor: 'pointer',
+  boxShadow: 'none',
 }
 
 const mainStyle: CSSProperties = {
