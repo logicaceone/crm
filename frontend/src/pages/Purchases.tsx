@@ -143,8 +143,8 @@ export function Purchases() {
 
   // ── Add external channel inline ──────────────────────────────────────────
 
-  async function handleAddChannel(e: FormEvent) {
-    e.preventDefault()
+  async function handleAddChannel() {
+    if (!newChName.trim()) return
     setAddingCh(true)
     try {
       const res = await apiFetch('/api/external-channels', {
@@ -459,7 +459,7 @@ interface PurchaseModalProps {
   newChLink: string
   setNewChLink: (v: string) => void
   addingCh: boolean
-  onAddChannel: (e: FormEvent) => void
+  onAddChannel: () => void
   onSubmit: (e: FormEvent) => void
   onClose: () => void
 }
@@ -506,28 +506,29 @@ function PurchaseModal({
 
           {showNewChannel && (
             <div style={inlineChannelStyle}>
-              <form onSubmit={onAddChannel} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input
                   placeholder="Название площадки *"
                   value={newChName}
                   onChange={e => setNewChName(e.target.value)}
-                  required
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), onAddChannel())}
                   autoFocus
                 />
                 <input
                   placeholder="Ссылка (необязательно)"
                   value={newChLink}
                   onChange={e => setNewChLink(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), onAddChannel())}
                 />
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button type="submit" disabled={addingCh} style={{ fontSize: 12 }}>
+                  <button type="button" onClick={onAddChannel} disabled={addingCh} style={{ fontSize: 12 }}>
                     {addingCh ? 'Добавление…' : 'Добавить'}
                   </button>
                   <button type="button" onClick={() => setShowNewChannel(false)} style={{ fontSize: 12 }}>
                     Отмена
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
           )}
 
