@@ -22,7 +22,7 @@ class ChannelStat(Base):
     id = Column(Integer, primary_key=True, index=True)
     channel_id = Column(Integer, ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True)
     date = Column(Date, nullable=False)
-    subscribers_count = Column(Integer, nullable=False)
-    avg_views_per_post = Column(Integer, nullable=False)
+    subscribers_count = Column(Integer, nullable=True)
+    avg_views_per_post = Column(Integer, nullable=True)
 
     channel = relationship("Channel", back_populates="stats")

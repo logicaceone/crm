@@ -81,10 +81,14 @@ def dashboard_top_channels(
     result = []
 
     for ch in channels:
-        # latest stat
+        # latest stat with subscriber count (bot records)
         latest = (
             db.query(ChannelStat)
-            .filter(ChannelStat.channel_id == ch.id, ChannelStat.date <= today)
+            .filter(
+                ChannelStat.channel_id == ch.id,
+                ChannelStat.date <= today,
+                ChannelStat.subscribers_count.isnot(None),
+            )
             .order_by(ChannelStat.date.desc())
             .first()
         )
@@ -94,7 +98,11 @@ def dashboard_top_channels(
         # closest stat to 30 days ago
         ago_stat = (
             db.query(ChannelStat)
-            .filter(ChannelStat.channel_id == ch.id, ChannelStat.date <= ago_30)
+            .filter(
+                ChannelStat.channel_id == ch.id,
+                ChannelStat.date <= ago_30,
+                ChannelStat.subscribers_count.isnot(None),
+            )
             .order_by(ChannelStat.date.desc())
             .first()
         )

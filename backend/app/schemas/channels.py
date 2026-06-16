@@ -7,8 +7,8 @@ class ChannelStatResponse(BaseModel):
     id: int
     channel_id: int
     date: date
-    subscribers_count: int
-    avg_views_per_post: int
+    subscribers_count: Optional[int] = None
+    avg_views_per_post: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -24,7 +24,8 @@ class ChannelResponse(BaseModel):
 
 
 class ChannelWithStats(ChannelResponse):
-    last_stat: Optional[ChannelStatResponse] = None
+    last_subscriber_stat: Optional[ChannelStatResponse] = None
+    last_views_stat: Optional[ChannelStatResponse] = None
     stat_30d_ago: Optional[ChannelStatResponse] = None
 
 
@@ -42,5 +43,4 @@ class UpdateChannelRequest(BaseModel):
 
 class CreateStatRequest(BaseModel):
     date: date
-    subscribers_count: int
     avg_views_per_post: int

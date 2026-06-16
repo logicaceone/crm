@@ -7,8 +7,8 @@ interface ChannelStat {
   id: number
   channel_id: number
   date: string
-  subscribers_count: number
-  avg_views_per_post: number
+  subscribers_count: number | null
+  avg_views_per_post: number | null
 }
 
 interface Channel {
@@ -17,13 +17,14 @@ interface Channel {
   tg_link: string | null
   description: string | null
   created_at: string
-  last_stat: ChannelStat | null
+  last_subscriber_stat: ChannelStat | null
+  last_views_stat: ChannelStat | null
   stat_30d_ago: ChannelStat | null
 }
 
 function growth(ch: Channel): string {
-  if (!ch.last_stat || !ch.stat_30d_ago) return '—'
-  const diff = ch.last_stat.subscribers_count - ch.stat_30d_ago.subscribers_count
+  if (!ch.last_subscriber_stat || !ch.stat_30d_ago) return '—'
+  const diff = (ch.last_subscriber_stat.subscribers_count ?? 0) - (ch.stat_30d_ago.subscribers_count ?? 0)
   return diff >= 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString()
 }
 
@@ -80,7 +81,7 @@ export function Channels() {
         setCreateError(d.detail ?? 'Ошибка создания')
         return
       }
-      const created: Channel = { ...(await res.json()), last_stat: null, stat_30d_ago: null }
+      const created: Channel = { ...(await res.json()), last_subscriber_stat: null, last_views_stat: null, stat_30d_ago: null }
       setChannels(prev => [...prev, created])
       setShowCreate(false)
       setCreateForm(emptyForm)
@@ -118,7 +119,7 @@ export function Channels() {
       setChannels(prev =>
         prev.map(ch =>
           ch.id === updated.id
-            ? { ...updated, last_stat: ch.last_stat, stat_30d_ago: ch.stat_30d_ago }
+            ? { ...updated, last_subscriber_stat: ch.last_subscriber_stat, last_views_stat: ch.last_views_stat, stat_30d_ago: ch.stat_30d_ago }
             : ch
         )
       )
@@ -180,13 +181,13 @@ export function Channels() {
                   : '—'}
               </td>
               <td style={tdStyle}>
-                {ch.last_stat ? ch.last_stat.subscribers_count.toLocaleString() : '—'}
+                {ch.last_subscriber_stat?.subscribers_count?.toLocaleString() ?? '—'}
               </td>
               <td style={{ ...tdStyle, color: growthColor(ch) }}>
                 {growth(ch)}
               </td>
               <td style={tdStyle}>
-                {ch.last_stat ? ch.last_stat.avg_views_per_post.toLocaleString() : '—'}
+                {ch.last_views_stat?.avg_views_per_post?.toLocaleString() ?? '—'}
               </td>
               {canWrite && (
                 <td style={tdStyle}>
@@ -269,8 +270,8 @@ export function Channels() {
 }
 
 function growthColor(ch: Channel): string {
-  if (!ch.last_stat || !ch.stat_30d_ago) return 'inherit'
-  const diff = ch.last_stat.subscribers_count - ch.stat_30d_ago.subscribers_count
+  if (!ch.last_subscriber_stat || !ch.stat_30d_ago) return 'inherit'
+  const diff = (ch.last_subscriber_stat.subscribers_count ?? 0) - (ch.stat_30d_ago.subscribers_count ?? 0)
   if (diff > 0) return '#16a34a'
   if (diff < 0) return '#dc2626'
   return 'inherit'

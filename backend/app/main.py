@@ -13,6 +13,7 @@ from .routers.purchases import router as purchases_router, router_ext as ext_cha
 from .routers.sales import router as sales_router
 from .routers.budget import router as budget_router
 from .routers.dashboard import router as dashboard_router
+from .scheduler import start_scheduler, stop_scheduler
 
 
 def _run_migrations() -> None:
@@ -39,7 +40,9 @@ def _seed_admin() -> None:
 async def lifespan(app: FastAPI):
     _run_migrations()
     _seed_admin()
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(title="CRM API", lifespan=lifespan)

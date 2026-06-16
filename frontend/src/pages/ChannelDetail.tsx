@@ -16,8 +16,8 @@ interface ChannelStat {
   id: number
   channel_id: number
   date: string
-  subscribers_count: number
-  avg_views_per_post: number
+  subscribers_count: number | null
+  avg_views_per_post: number | null
 }
 
 interface Channel {
@@ -65,7 +65,7 @@ export function ChannelDetail() {
   const [pageError, setPageError] = useState('')
 
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ date: toIso(new Date()), subscribers_count: '', avg_views_per_post: '' })
+  const [form, setForm] = useState({ date: toIso(new Date()), avg_views_per_post: '' })
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -99,7 +99,6 @@ export function ChannelDetail() {
         method: 'POST',
         body: JSON.stringify({
           date: form.date,
-          subscribers_count: Number(form.subscribers_count),
           avg_views_per_post: Number(form.avg_views_per_post),
         }),
       })
@@ -109,12 +108,9 @@ export function ChannelDetail() {
         return
       }
       const newStat: ChannelStat = await res.json()
-      setStats(prev => {
-        const merged = [...prev, newStat].sort((a, b) => a.date.localeCompare(b.date))
-        return merged
-      })
+      setStats(prev => [...prev, newStat].sort((a, b) => a.date.localeCompare(b.date)))
       setShowAdd(false)
-      setForm({ date: toIso(new Date()), subscribers_count: '', avg_views_per_post: '' })
+      setForm({ date: toIso(new Date()), avg_views_per_post: '' })
     } finally {
       setSubmitting(false)
     }
@@ -123,20 +119,25 @@ export function ChannelDetail() {
   if (pageError) return <p style={{ color: 'red' }}>{pageError}</p>
   if (!channel) return <p>Загрузка…</p>
 
-  const chartData = stats.map(s => ({
+  const subscriberStats = stats.filter(s => s.subscribers_count !== null)
+  const viewsStats = stats.filter(s => s.avg_views_per_post !== null)
+
+  const subscriberChartData = subscriberStats.map(s => ({
     date: s.date,
     subscribers: s.subscribers_count,
+  }))
+
+  const viewsChartData = viewsStats.map(s => ({
+    date: s.date,
     views: s.avg_views_per_post,
   }))
 
   return (
     <div>
-      {/* Back */}
       <button onClick={() => navigate('/channels')} style={backBtnStyle}>
         ← Назад
       </button>
 
-      {/* Channel info */}
       <section style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
@@ -147,21 +148,20 @@ export function ChannelDetail() {
               </a>
             )}
             {channel.description && (
-              <p style={{ margin: '8px 0 0', color: '#555', fontSize: 14 }}>{channel.description}</p>
+              <p style={{ margin: '8px 0 0', color: '#8C7B6E', fontSize: 14 }}>{channel.description}</p>
             )}
-            <p style={{ margin: '6px 0 0', color: '#888', fontSize: 12 }}>
+            <p style={{ margin: '6px 0 0', color: '#D4B896', fontSize: 12 }}>
               Добавлен: {new Date(channel.created_at).toLocaleDateString('ru-RU')}
             </p>
           </div>
           {canWrite && (
             <button onClick={() => { setShowAdd(true); setFormError('') }}>
-              + Добавить снапшот
+              + Добавить снапшот просмотров
             </button>
           )}
         </div>
       </section>
 
-      {/* Period filter */}
       <div style={periodRowStyle}>
         {PERIODS.map(p => (
           <button
@@ -179,74 +179,106 @@ export function ChannelDetail() {
       </div>
 
       {stats.length === 0 ? (
-        <div style={emptyStyle}>
-          Добавьте первый снапшот, чтобы увидеть динамику
-        </div>
+        <div style={emptyStyle}>Нет данных за выбранный период</div>
       ) : (
         <>
-          {/* Charts */}
           <div style={chartsRowStyle}>
-            <ChartCard title="Подписчики">
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} width={60} />
-                  <Tooltip formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)} />
-                  <Line type="monotone" dataKey="subscribers" stroke="#2563eb" dot={false} strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+            <ChartCard title="Подписчики (авто, ТГ бот)">
+              {subscriberChartData.length === 0 ? (
+                <div style={{ color: '#D4B896', fontSize: 13, paddingTop: 16 }}>Нет данных</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={subscriberChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0E8DE" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} width={60} tickFormatter={v => v.toLocaleString()} />
+                    <Tooltip formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)} />
+                    <Line type="monotone" dataKey="subscribers" stroke="#C07D4A" dot={false} strokeWidth={2} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </ChartCard>
 
-            <ChartCard title="Ср. просмотры на пост">
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} width={60} />
-                  <Tooltip formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)} />
-                  <Line type="monotone" dataKey="views" stroke="#16a34a" dot={false} strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+            <ChartCard title="Ср. просмотры на пост (снапшот)">
+              {viewsChartData.length === 0 ? (
+                <div style={{ color: '#D4B896', fontSize: 13, paddingTop: 16 }}>Нет данных</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={viewsChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0E8DE" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} width={60} tickFormatter={v => v.toLocaleString()} />
+                    <Tooltip formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)} />
+                    <Line type="monotone" dataKey="views" stroke="#16a34a" dot={false} strokeWidth={2} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </ChartCard>
           </div>
 
-          {/* Stats table */}
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Дата</th>
-                <th style={thStyle}>Подписчики</th>
-                <th style={thStyle}>Ср. просмотры</th>
-                <th style={thStyle}>Прирост подписчиков</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...stats].reverse().map((s, i, arr) => {
-                const prev = arr[i + 1]
-                const diff = prev ? s.subscribers_count - prev.subscribers_count : null
-                return (
-                  <tr key={s.id}>
-                    <td style={tdStyle}>{s.date}</td>
-                    <td style={tdStyle}>{s.subscribers_count.toLocaleString()}</td>
-                    <td style={tdStyle}>{s.avg_views_per_post.toLocaleString()}</td>
-                    <td style={{ ...tdStyle, color: diffColor(diff) }}>
-                      {diff === null ? '—' : diff >= 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString()}
-                    </td>
+          {subscriberStats.length > 0 && (
+            <>
+              <h2 style={{ fontSize: 14, fontWeight: 600, color: '#2C2B28', margin: '0 0 8px' }}>
+                История подписчиков
+              </h2>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Дата</th>
+                    <th style={thStyle}>Подписчики</th>
+                    <th style={thStyle}>Прирост</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {[...subscriberStats].reverse().map((s, i, arr) => {
+                    const prev = arr[i + 1]
+                    const diff = prev ? (s.subscribers_count ?? 0) - (prev.subscribers_count ?? 0) : null
+                    return (
+                      <tr key={s.id}>
+                        <td style={tdStyle}>{s.date}</td>
+                        <td style={tdStyle}>{s.subscribers_count?.toLocaleString() ?? '—'}</td>
+                        <td style={{ ...tdStyle, color: diffColor(diff) }}>
+                          {diff === null ? '—' : diff >= 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString()}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {viewsStats.length > 0 && (
+            <>
+              <h2 style={{ fontSize: 14, fontWeight: 600, color: '#2C2B28', margin: '20px 0 8px' }}>
+                История просмотров (снапшоты)
+              </h2>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Дата</th>
+                    <th style={thStyle}>Ср. просмотры на пост</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...viewsStats].reverse().map(s => (
+                    <tr key={s.id}>
+                      <td style={tdStyle}>{s.date}</td>
+                      <td style={tdStyle}>{s.avg_views_per_post?.toLocaleString() ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </>
       )}
 
-      {/* Add snapshot modal */}
       {showAdd && (
         <div style={overlayStyle}>
           <div style={modalStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Добавить снапшот</h2>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Снапшот просмотров</h2>
               <button onClick={() => setShowAdd(false)} style={closeBtnStyle}>×</button>
             </div>
             <form onSubmit={handleAdd} style={formStyle}>
@@ -259,17 +291,6 @@ export function ChannelDetail() {
                   onChange={e => setForm(p => ({ ...p, date: e.target.value }))}
                   required
                   autoFocus
-                />
-              </label>
-              <label style={labelStyle}>
-                Подписчики
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="0"
-                  value={form.subscribers_count}
-                  onChange={e => setForm(p => ({ ...p, subscribers_count: e.target.value }))}
-                  required
                 />
               </label>
               <label style={labelStyle}>
@@ -374,6 +395,7 @@ const tableStyle: CSSProperties = {
   border: '1px solid #E8DDD3',
   borderRadius: 8,
   overflow: 'hidden',
+  marginBottom: 8,
 }
 
 const thStyle: CSSProperties = {

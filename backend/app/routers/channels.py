@@ -22,26 +22,43 @@ read_access = require_roles([UserRole.admin, UserRole.manager, UserRole.viewer])
 write_access = require_roles([UserRole.admin, UserRole.manager])
 
 
-def _last_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:
+def _last_subscriber_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:
     return (
         db.query(ChannelStat)
-        .filter(ChannelStat.channel_id == channel_id)
+        .filter(ChannelStat.channel_id == channel_id, ChannelStat.subscribers_count.isnot(None))
         .order_by(ChannelStat.date.desc())
         .first()
     )
 
 
-def _stat_near_date(db: Session, channel_id: int, target: date) -> Optional[ChannelStat]:
-    """Return stat whose date is closest to `target`."""
+def _last_views_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:
+    return (
+        db.query(ChannelStat)
+        .filter(ChannelStat.channel_id == channel_id, ChannelStat.avg_views_per_post.isnot(None))
+        .order_by(ChannelStat.date.desc())
+        .first()
+    )
+
+
+def _subscriber_stat_near_date(db: Session, channel_id: int, target: date) -> Optional[ChannelStat]:
+    """Return subscriber stat whose date is closest to `target`."""
     after = (
         db.query(ChannelStat)
-        .filter(ChannelStat.channel_id == channel_id, ChannelStat.date >= target)
+        .filter(
+            ChannelStat.channel_id == channel_id,
+            ChannelStat.subscribers_count.isnot(None),
+            ChannelStat.date >= target,
+        )
         .order_by(ChannelStat.date.asc())
         .first()
     )
     before = (
         db.query(ChannelStat)
-        .filter(ChannelStat.channel_id == channel_id, ChannelStat.date < target)
+        .filter(
+            ChannelStat.channel_id == channel_id,
+            ChannelStat.subscribers_count.isnot(None),
+            ChannelStat.date < target,
+        )
         .order_by(ChannelStat.date.desc())
         .first()
     )
@@ -56,29 +73,30 @@ def _stat_near_date(db: Session, channel_id: int, target: date) -> Optional[Chan
     return before
 
 
+def _build_channel_with_stats(db: Session, ch: Channel) -> ChannelWithStats:
+    last_sub = _last_subscriber_stat(db, ch.id)
+    last_views = _last_views_stat(db, ch.id)
+    ago = None
+    if last_sub:
+        target = last_sub.date - timedelta(days=30)
+        candidate = _subscriber_stat_near_date(db, ch.id, target)
+        if candidate and candidate.id != last_sub.id:
+            ago = candidate
+    return ChannelWithStats(
+        **ChannelResponse.model_validate(ch).model_dump(),
+        last_subscriber_stat=ChannelStatResponse.model_validate(last_sub) if last_sub else None,
+        last_views_stat=ChannelStatResponse.model_validate(last_views) if last_views else None,
+        stat_30d_ago=ChannelStatResponse.model_validate(ago) if ago else None,
+    )
+
+
 @router.get("", response_model=list[ChannelWithStats])
 def list_channels(
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
     channels = db.query(Channel).order_by(Channel.created_at).all()
-    result = []
-    for ch in channels:
-        last = _last_stat(db, ch.id)
-        ago = None
-        if last:
-            target = last.date - timedelta(days=30)
-            candidate = _stat_near_date(db, ch.id, target)
-            if candidate and candidate.id != last.id:
-                ago = candidate
-        result.append(
-            ChannelWithStats(
-                **ChannelResponse.model_validate(ch).model_dump(),
-                last_stat=ChannelStatResponse.model_validate(last) if last else None,
-                stat_30d_ago=ChannelStatResponse.model_validate(ago) if ago else None,
-            )
-        )
-    return result
+    return [_build_channel_with_stats(db, ch) for ch in channels]
 
 
 @router.post("", response_model=ChannelResponse, status_code=201)
@@ -103,18 +121,7 @@ def get_channel(
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
-    last = _last_stat(db, ch.id)
-    ago = None
-    if last:
-        target = last.date - timedelta(days=30)
-        candidate = _stat_near_date(db, ch.id, target)
-        if candidate and candidate.id != last.id:
-            ago = candidate
-    return ChannelWithStats(
-        **ChannelResponse.model_validate(ch).model_dump(),
-        last_stat=ChannelStatResponse.model_validate(last) if last else None,
-        stat_30d_ago=ChannelStatResponse.model_validate(ago) if ago else None,
-    )
+    return _build_channel_with_stats(db, ch)
 
 
 @router.patch("/{channel_id}", response_model=ChannelResponse)
@@ -157,7 +164,12 @@ def add_stat(
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
-    stat = ChannelStat(channel_id=channel_id, **data.model_dump())
+    stat = ChannelStat(
+        channel_id=channel_id,
+        date=data.date,
+        avg_views_per_post=data.avg_views_per_post,
+        subscribers_count=None,
+    )
     db.add(stat)
     db.commit()
     db.refresh(stat)
