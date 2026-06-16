@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -95,6 +96,7 @@ const emptyForm = {
 export function Sales() {
   const { user } = useAuth()
   const toast = useToast()
+  const confirm = useConfirm()
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channels, setChannels] = useState<Channel[]>([])
@@ -241,7 +243,7 @@ export function Sales() {
   // ── Delete ───────────────────────────────────────────────────────────────
 
   async function handleDelete(s: Sale) {
-    if (!confirm(`Удалить продажу клиенту "${s.client_name}" от ${s.date}?`)) return
+    if (!await confirm(`Удалить продажу клиенту "${s.client_name}" от ${s.date}?`)) return
     const res = await apiFetch(`/api/sales/${s.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setSales(prev => prev.filter(x => x.id !== s.id))

@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
 
 type Role = 'root' | 'admin' | 'manager' | 'viewer'
@@ -47,6 +48,7 @@ function canDeleteUser(me: UserItem, target: UserItem): boolean {
 export function Users() {
   const { user: me } = useAuth()
   const toast = useToast()
+  const confirm = useConfirm()
   const [users, setUsers] = useState<UserItem[]>([])
   const [fetchError, setFetchError] = useState('')
 
@@ -129,7 +131,7 @@ export function Users() {
   }
 
   async function handleDelete(u: UserItem) {
-    if (!confirm(`Удалить пользователя "${u.username}"?`)) return
+    if (!await confirm(`Удалить пользователя "${u.username}"?`)) return
     const res = await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setUsers(prev => prev.filter(x => x.id !== u.id))

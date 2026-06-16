@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -88,6 +89,7 @@ const emptyForm = {
 export function Purchases() {
   const { user } = useAuth()
   const toast = useToast()
+  const confirm = useConfirm()
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [extChannels, setExtChannels] = useState<ExternalChannel[]>([])
@@ -257,7 +259,7 @@ export function Purchases() {
   // ── Delete purchase ──────────────────────────────────────────────────────
 
   async function handleDelete(p: Purchase) {
-    if (!confirm(`Удалить закупку от ${p.date} (${p.external_channel.name})?`)) return
+    if (!await confirm(`Удалить закупку от ${p.date} (${p.external_channel.name})?`)) return
     const res = await apiFetch(`/api/purchases/${p.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setPurchases(prev => prev.filter(x => x.id !== p.id))

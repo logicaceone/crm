@@ -2,6 +2,7 @@ import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
 
 interface ChannelStat {
@@ -34,6 +35,7 @@ const emptyForm = { name: '', tg_link: '', description: '' }
 export function Channels() {
   const { user } = useAuth()
   const toast = useToast()
+  const confirm = useConfirm()
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channels, setChannels] = useState<Channel[]>([])
@@ -138,7 +140,7 @@ export function Channels() {
   }
 
   async function handleDelete(ch: Channel) {
-    if (!confirm(`Удалить канал "${ch.name}"?`)) return
+    if (!await confirm(`Удалить канал "${ch.name}"?`)) return
     const res = await apiFetch(`/api/channels/${ch.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setChannels(prev => prev.filter(c => c.id !== ch.id))
