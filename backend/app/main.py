@@ -11,6 +11,7 @@ from .models.user import User, UserRole
 from .routers import auth, users, channels
 from .routers.purchases import router as purchases_router, router_ext as ext_channels_router
 from .routers.sales import router as sales_router
+from .routers.budget import router as budget_router
 
 
 def _run_migrations() -> None:
@@ -56,6 +57,7 @@ app.include_router(channels.router)
 app.include_router(ext_channels_router)
 app.include_router(purchases_router)
 app.include_router(sales_router)
+app.include_router(budget_router)
 
 
 @app.get("/health")
