@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
-from passlib.context import CryptContext
+import bcrypt
 
 from .config import settings
 from .database import SessionLocal
@@ -23,10 +23,9 @@ def _seed_admin() -> None:
     try:
         if db.query(User).filter(User.username == "admin").first():
             return
-        pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
         db.add(User(
             username="admin",
-            password_hash=pwd.hash("admin"),
+            password_hash=bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode(),
             role=UserRole.admin,
         ))
         db.commit()

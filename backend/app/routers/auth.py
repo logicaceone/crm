@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
+import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from ..database import get_db
@@ -9,7 +9,6 @@ from ..schemas.auth import LoginRequest, UserResponse
 from ..config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SESSION_COOKIE = "session"
 SESSION_MAX_AGE = 7 * 24 * 3600  # 7 days
@@ -46,7 +45,7 @@ def require_roles(roles: list[UserRole]):
 @router.post("/login", response_model=UserResponse)
 def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == data.username).first()
-    if not user or not pwd_context.verify(data.password, user.password_hash):
+    if not user or not bcrypt.checkpw(data.password.encode(), user.password_hash.encode()):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = _serializer().dumps(user.id)
     response.set_cookie(

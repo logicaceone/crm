@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
+import bcrypt
 
 from ..database import get_db
 from ..models.user import User, UserRole
@@ -9,7 +9,6 @@ from ..schemas.users import CreateUserRequest, UpdateUserRequest
 from .auth import require_roles
 
 router = APIRouter(prefix="/users", tags=["users"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 admin_only = require_roles([UserRole.admin])
 
@@ -32,7 +31,7 @@ def create_user(
         raise HTTPException(status_code=409, detail="Username already exists")
     user = User(
         username=data.username,
-        password_hash=pwd_context.hash(data.password),
+        password_hash=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
         role=data.role,
     )
     db.add(user)
@@ -54,7 +53,7 @@ def update_user(
     if data.role is not None:
         user.role = data.role
     if data.password is not None:
-        user.password_hash = pwd_context.hash(data.password)
+        user.password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
     db.commit()
     db.refresh(user)
     return user
