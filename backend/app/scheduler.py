@@ -78,14 +78,14 @@ async def sync_subscriber_counts() -> None:
                         ))
                     db.commit()
                     synced += 1
-                    logger.info("Synced @%s: %d subscribers", username, count)
+                    print(f"[TG] Synced @{username}: {count} subscribers", flush=True)
                 except Exception as exc:
-                    logger.error("Failed to sync @%s: %s", username, exc)
+                    print(f"[TG] Failed to sync @{username}: {exc}", flush=True)
                     failed += 1
     finally:
         db.close()
 
-    logger.info("Subscriber sync done: %d synced, %d failed", synced, failed)
+    print(f"[TG] Sync done: {synced} synced, {failed} failed", flush=True)
 
 
 def start_scheduler() -> None:
@@ -97,7 +97,7 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("Scheduler started (subscriber sync at 23:58 GMT+3)")
+    print("[TG] Scheduler started — subscriber sync at 23:58 GMT+3 (20:58 UTC)", flush=True)
 
 
 def stop_scheduler() -> None:
