@@ -66,7 +66,7 @@ const PRESETS: { label: string; value: Preset }[] = [
 ]
 
 const CHANNEL_COLORS = [
-  '#2563eb', '#16a34a', '#dc2626', '#d97706',
+  '#C07D4A', '#16a34a', '#dc2626', '#d97706',
   '#7c3aed', '#0891b2', '#db2777', '#65a30d',
 ]
 
@@ -84,8 +84,8 @@ const SALE_STATUS_LABELS: Record<string, string> = {
 }
 
 const SALE_STATUS_COLORS: Record<string, string> = {
-  agreed: '#9ca3af',
-  placed: '#2563eb',
+  agreed: '#D4B896',
+  placed: '#C07D4A',
   paid: '#16a34a',
   cancelled: '#dc2626',
 }
@@ -192,12 +192,12 @@ export function Dashboard() {
             style={{
               padding: '5px 12px',
               borderRadius: 6,
-              border: '1px solid #e5e7eb',
+              border: '1px solid #E8DDD3',
               cursor: 'pointer',
               fontSize: 13,
               fontWeight: 500,
-              background: preset === p.value ? '#111827' : '#f3f4f6',
-              color: preset === p.value ? '#fff' : '#374151',
+              background: preset === p.value ? '#2C2B28' : '#F0E8DE',
+              color: preset === p.value ? '#FEFEFE' : '#2C2B28',
             }}
           >
             {p.label}
@@ -212,13 +212,13 @@ export function Dashboard() {
           label="Маржа"
           value={summary ? fmt(summary.margin) : '—'}
           currency="₽"
-          accent={!summary ? '#6b7280' : summary.margin >= 0 ? '#16a34a' : '#dc2626'}
+          accent={!summary ? '#8C7B6E' : summary.margin >= 0 ? '#16a34a' : '#dc2626'}
         />
         <KpiCard
           label="Маржа %"
           value={summary ? `${summary.margin_pct > 0 ? '+' : ''}${summary.margin_pct.toFixed(1)}` : '—'}
           currency="%"
-          accent={!summary ? '#6b7280' : summary.margin_pct >= 0 ? '#16a34a' : '#dc2626'}
+          accent={!summary ? '#8C7B6E' : summary.margin_pct >= 0 ? '#16a34a' : '#dc2626'}
         />
       </div>
 
@@ -281,7 +281,7 @@ export function Dashboard() {
                     <td style={tdStyle}>{p.channel_name}</td>
                     <td style={tdStyle}>{fmt(p.price)} {p.currency}</td>
                     <td style={tdStyle}>
-                      <span style={{ fontSize: 12, color: '#374151' }}>
+                      <span style={{ fontSize: 12, color: '#2C2B28' }}>
                         {PURCHASE_STATUS_LABELS[p.status] ?? p.status}
                       </span>
                     </td>
@@ -316,7 +316,7 @@ export function Dashboard() {
                     <td style={tdStyle}>
                       <span style={{
                         fontSize: 12,
-                        color: SALE_STATUS_COLORS[s.status] ?? '#374151',
+                        color: SALE_STATUS_COLORS[s.status] ?? '#2C2B28',
                         fontWeight: 500,
                       }}>
                         {SALE_STATUS_LABELS[s.status] ?? s.status}
@@ -371,12 +371,12 @@ function KpiCard({ label, value, currency, accent, sub }: {
 }) {
   return (
     <div style={{ ...kpiCardStyle, borderTop: `4px solid ${accent}` }}>
-      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#8C7B6E', marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 26, fontWeight: 700, color: accent }}>
         {value}
-        {currency && <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4, color: '#9ca3af' }}>{currency}</span>}
+        {currency && <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4, color: '#D4B896' }}>{currency}</span>}
       </div>
-      {sub && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: '#D4B896', marginTop: 4 }}>{sub}</div>}
     </div>
   )
 }
@@ -389,8 +389,8 @@ const cardsRowStyle: CSSProperties = {
 }
 
 const kpiCardStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: '16px 20px',
 }
@@ -403,16 +403,16 @@ const midRowStyle: CSSProperties = {
 }
 
 const blockStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: '16px 20px',
   overflow: 'hidden',
 }
 
 const chartCardStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: '16px 20px',
 }
@@ -421,12 +421,12 @@ const blockTitleStyle: CSSProperties = {
   margin: '0 0 12px',
   fontSize: 14,
   fontWeight: 600,
-  color: '#374151',
+  color: '#2C2B28',
 }
 
 const emptyTextStyle: CSSProperties = {
   fontSize: 13,
-  color: '#9ca3af',
+  color: '#D4B896',
   margin: 0,
 }
 
@@ -440,14 +440,14 @@ const thStyle: CSSProperties = {
   padding: '6px 8px',
   fontSize: 12,
   fontWeight: 600,
-  color: '#6b7280',
-  borderBottom: '1px solid #e5e7eb',
+  color: '#8C7B6E',
+  borderBottom: '1px solid #E8DDD3',
 }
 
 const tdStyle: CSSProperties = {
   padding: '7px 8px',
   fontSize: 13,
-  borderBottom: '1px solid #f3f4f6',
+  borderBottom: '1px solid #F0E8DE',
 }
 
 const clickableRowStyle: CSSProperties = {

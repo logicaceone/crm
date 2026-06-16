@@ -164,7 +164,7 @@ export function Channels() {
         <tbody>
           {channels.length === 0 && (
             <tr>
-              <td colSpan={canWrite ? 6 : 5} style={{ ...tdStyle, color: '#888', textAlign: 'center' }}>
+              <td colSpan={canWrite ? 6 : 5} style={{ ...tdStyle, color: '#D4B896', textAlign: 'center' }}>
                 Нет каналов
               </td>
             </tr>
@@ -176,7 +176,7 @@ export function Channels() {
               </td>
               <td style={tdStyle}>
                 {ch.tg_link
-                  ? <a href={ch.tg_link} target="_blank" rel="noopener noreferrer">{ch.tg_link}</a>
+                  ? <a href={ch.tg_link} target="_blank" rel="noopener noreferrer" style={{ color: '#C07D4A' }}>{ch.tg_link}</a>
                   : '—'}
               </td>
               <td style={tdStyle}>
@@ -191,7 +191,7 @@ export function Channels() {
               {canWrite && (
                 <td style={tdStyle}>
                   <button onClick={() => openEdit(ch)} style={{ marginRight: 8 }}>Редакт.</button>
-                  <button onClick={() => handleDelete(ch)} style={{ color: '#d00' }}>Удалить</button>
+                  <button onClick={() => handleDelete(ch)} style={{ background: 'transparent', color: '#dc2626', borderColor: '#dc2626' }}>Удалить</button>
                 </td>
               )}
             </tr>
@@ -304,22 +304,24 @@ const tableStyle: CSSProperties = {
 
 const thStyle: CSSProperties = {
   textAlign: 'left',
-  padding: '8px 12px',
-  borderBottom: '2px solid #e5e7eb',
+  padding: '10px 14px',
+  borderBottom: '1px solid #E8DDD3',
   fontWeight: 600,
-  fontSize: 14,
+  fontSize: 13,
+  background: '#F0E8DE',
+  color: '#8C7B6E',
 }
 
 const tdStyle: CSSProperties = {
-  padding: '8px 12px',
-  borderBottom: '1px solid #f3f4f6',
-  fontSize: 14,
+  padding: '9px 14px',
+  borderBottom: '1px solid #E8DDD3',
+  fontSize: 13,
 }
 
 const overlayStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0,0,0,0.45)',
+  background: 'rgba(44,43,40,0.5)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -327,11 +329,11 @@ const overlayStyle: CSSProperties = {
 }
 
 const modalStyle: CSSProperties = {
-  background: 'white',
-  borderRadius: 8,
-  padding: 24,
+  background: '#FEFEFE',
+  borderRadius: 10,
+  padding: 28,
   width: 400,
-  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+  boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
 }
 
 const formStyle: CSSProperties = {

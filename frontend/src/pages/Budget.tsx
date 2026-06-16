@@ -133,8 +133,8 @@ export function Budget() {
               onClick={() => applyPreset(i)}
               style={{
                 ...presetBtnStyle,
-                background: activePreset === i ? '#111827' : '#f3f4f6',
-                color: activePreset === i ? '#fff' : '#374151',
+                background: activePreset === i ? '#2C2B28' : '#F0E8DE',
+                color: activePreset === i ? '#FEFEFE' : '#2C2B28',
               }}
             >
               {p.label}
@@ -179,7 +179,7 @@ export function Budget() {
           value={summary ? fmt(summary.margin) : '—'}
           currency={summary?.currency}
           sub={summary ? `${summary.margin_pct > 0 ? '+' : ''}${summary.margin_pct.toFixed(1)}%` : undefined}
-          accent={!summary ? '#6b7280' : summary.margin >= 0 ? '#16a34a' : '#dc2626'}
+          accent={!summary ? '#8C7B6E' : summary.margin >= 0 ? '#16a34a' : '#dc2626'}
         />
       </div>
 
@@ -214,7 +214,7 @@ export function Budget() {
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} width={72} tickFormatter={v => fmt(v)} />
                 <Tooltip formatter={(v) => (typeof v === 'number' ? fmt(v) : v)} />
-                <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="4 4" />
+                <ReferenceLine y={0} stroke="#8C7B6E" strokeDasharray="4 4" />
                 <Line
                   type="monotone"
                   dataKey="margin"
@@ -252,7 +252,7 @@ export function Budget() {
               ))}
             </tbody>
             <tfoot>
-              <tr style={{ background: '#f9fafb', fontWeight: 600 }}>
+              <tr style={{ background: '#F0E8DE', fontWeight: 600 }}>
                 <td style={tdStyle}>Итого</td>
                 <td style={{ ...tdStyle, color: '#16a34a' }}>{fmt(totals.income)}</td>
                 <td style={{ ...tdStyle, color: '#dc2626' }}>{fmt(totals.expenses)}</td>
@@ -280,10 +280,10 @@ function KpiCard({ label, value, currency, sub, accent }: {
 }) {
   return (
     <div style={{ ...kpiCardStyle, borderTop: `4px solid ${accent}` }}>
-      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#8C7B6E', marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 700, color: accent }}>
         {value}
-        {currency && <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4, color: '#9ca3af' }}>{currency}</span>}
+        {currency && <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4, color: '#D4B896' }}>{currency}</span>}
       </div>
       {sub && <div style={{ fontSize: 14, color: accent, marginTop: 4 }}>{sub}</div>}
     </div>
@@ -296,8 +296,8 @@ const filtersRowStyle: CSSProperties = {
   gap: 12,
   alignItems: 'flex-end',
   marginBottom: 24,
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: '12px 16px',
 }
@@ -305,7 +305,7 @@ const filtersRowStyle: CSSProperties = {
 const presetBtnStyle: CSSProperties = {
   padding: '5px 12px',
   borderRadius: 6,
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E8DDD3',
   cursor: 'pointer',
   fontSize: 13,
   fontWeight: 500,
@@ -316,14 +316,14 @@ const filterLabelStyle: CSSProperties = {
   flexDirection: 'column',
   gap: 3,
   fontSize: 12,
-  color: '#6b7280',
+  color: '#8C7B6E',
   fontWeight: 500,
 }
 
 const inputStyle: CSSProperties = {
   fontSize: 13,
   padding: '4px 8px',
-  border: '1px solid #d1d5db',
+  border: '1px solid #E8DDD3',
   borderRadius: 6,
 }
 
@@ -335,15 +335,15 @@ const cardsRowStyle: CSSProperties = {
 }
 
 const kpiCardStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: '16px 20px',
 }
 
 const chartCardStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: '16px 20px',
   marginBottom: 16,
@@ -353,21 +353,21 @@ const chartTitleStyle: CSSProperties = {
   margin: '0 0 12px',
   fontSize: 14,
   fontWeight: 600,
-  color: '#374151',
+  color: '#2C2B28',
 }
 
 const emptyStyle: CSSProperties = {
   textAlign: 'center',
   padding: '64px 0',
-  color: '#9ca3af',
+  color: '#D4B896',
   fontSize: 15,
 }
 
 const tableStyle: CSSProperties = {
   width: '100%',
   borderCollapse: 'collapse',
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   overflow: 'hidden',
 }
@@ -375,14 +375,14 @@ const tableStyle: CSSProperties = {
 const thStyle: CSSProperties = {
   textAlign: 'left',
   padding: '10px 14px',
-  borderBottom: '2px solid #e5e7eb',
+  borderBottom: '2px solid #E8DDD3',
   fontWeight: 600,
   fontSize: 13,
-  background: '#f9fafb',
+  background: '#F0E8DE',
 }
 
 const tdStyle: CSSProperties = {
   padding: '8px 14px',
-  borderBottom: '1px solid #f3f4f6',
+  borderBottom: '1px solid #F0E8DE',
   fontSize: 13,
 }

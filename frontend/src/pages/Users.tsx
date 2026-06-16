@@ -196,7 +196,7 @@ const overlayStyle: CSSProperties = {
 }
 
 const modalStyle: CSSProperties = {
-  background: 'white',
+  background: '#FEFEFE',
   borderRadius: 8,
   padding: 24,
   width: 360,

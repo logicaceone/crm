@@ -41,22 +41,21 @@ export function Layout() {
               to={item.to}
               style={({ isActive }) => ({
                 ...linkStyle,
-                background: isActive ? '#1f2937' : 'transparent',
+                background: isActive ? '#3D3A35' : 'transparent',
+                borderLeft: isActive ? '3px solid #C07D4A' : '3px solid transparent',
               })}
             >
               {item.label}
             </NavLink>
           ))}
         </nav>
+        <div style={sidebarFooterStyle}>
+          <div style={{ fontSize: 12, color: '#D4B896', marginBottom: 4 }}>{user.role}</div>
+          <div style={{ fontWeight: 600, color: '#F0E8DE', fontSize: 13, marginBottom: 10 }}>{user.username}</div>
+          <button onClick={handleLogout} style={logoutBtnStyle}>Выйти</button>
+        </div>
       </aside>
       <div style={mainStyle}>
-        <header style={headerStyle}>
-          <div>
-            <strong>{user.username}</strong>
-            <span style={{ marginLeft: 8, color: '#666' }}>({user.role})</span>
-          </div>
-          <button onClick={handleLogout}>Выйти</button>
-        </header>
         <main style={contentStyle}>
           <Outlet />
         </main>
@@ -72,51 +71,64 @@ const shellStyle: CSSProperties = {
 
 const sidebarStyle: CSSProperties = {
   width: 220,
-  background: '#111827',
-  color: '#f9fafb',
+  background: '#2C2B28',
   display: 'flex',
   flexDirection: 'column',
+  flexShrink: 0,
 }
 
 const brandStyle: CSSProperties = {
-  padding: '20px 24px',
-  fontSize: 20,
+  padding: '22px 24px 18px',
+  fontSize: 18,
   fontWeight: 700,
-  borderBottom: '1px solid #1f2937',
+  letterSpacing: '0.08em',
+  color: '#F0E8DE',
+  borderBottom: '1px solid #3D3A35',
 }
 
 const navStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  padding: 12,
-  gap: 4,
+  padding: '12px 10px',
+  gap: 2,
+  flex: 1,
 }
 
 const linkStyle: CSSProperties = {
-  color: '#f9fafb',
+  color: '#D4B896',
   textDecoration: 'none',
   padding: '8px 12px',
   borderRadius: 6,
-  fontSize: 14,
+  fontSize: 13,
+  fontWeight: 500,
+  transition: 'background 0.15s, color 0.15s',
+}
+
+const sidebarFooterStyle: CSSProperties = {
+  padding: '14px 20px 20px',
+  borderTop: '1px solid #3D3A35',
+}
+
+const logoutBtnStyle: CSSProperties = {
+  width: '100%',
+  background: 'transparent',
+  border: '1px solid #3D3A35',
+  color: '#D4B896',
+  borderRadius: 6,
+  padding: '6px 0',
+  fontSize: 12,
+  cursor: 'pointer',
 }
 
 const mainStyle: CSSProperties = {
   flex: 1,
   display: 'flex',
   flexDirection: 'column',
-}
-
-const headerStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '12px 24px',
-  borderBottom: '1px solid #e5e7eb',
-  background: '#fff',
+  minWidth: 0,
 }
 
 const contentStyle: CSSProperties = {
   flex: 1,
-  padding: 24,
-  background: '#f9fafb',
+  padding: 28,
+  background: '#F5F4F0',
 }

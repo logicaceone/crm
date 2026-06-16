@@ -47,9 +47,9 @@ const STATUS_LABELS: Record<PurchaseStatus, string> = {
 }
 
 const STATUS_COLORS: Record<PurchaseStatus, string> = {
-  planned: '#d97706',
+  planned: '#C07D4A',
   placed: '#16a34a',
-  cancelled: '#9ca3af',
+  cancelled: '#D4B896',
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ export function Purchases() {
           onChange={e => setFilters(p => ({ ...p, from: e.target.value }))}
           style={filterSelectStyle}
         />
-        <span style={{ alignSelf: 'center', color: '#9ca3af', fontSize: 13 }}>—</span>
+        <span style={{ alignSelf: 'center', color: '#D4B896', fontSize: 13 }}>—</span>
         <input
           type="date"
           value={filters.to}
@@ -315,7 +315,7 @@ export function Purchases() {
         {(filters.external_channel_id || filters.status || filters.from || filters.to) && (
           <button
             onClick={() => setFilters({ external_channel_id: '', status: '', from: '', to: '' })}
-            style={{ fontSize: 12, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
+            style={{ fontSize: 12, color: '#8C7B6E', background: 'none', border: 'none', cursor: 'pointer' }}
           >
             Сбросить
           </button>
@@ -337,7 +337,7 @@ export function Purchases() {
         <tbody>
           {purchases.length === 0 ? (
             <tr>
-              <td colSpan={canWrite ? 6 : 5} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af' }}>
+              <td colSpan={canWrite ? 6 : 5} style={{ ...tdStyle, textAlign: 'center', color: '#D4B896' }}>
                 Нет закупок
               </td>
             </tr>
@@ -358,7 +358,7 @@ export function Purchases() {
                 {canWrite && (
                   <td style={tdStyle}>
                     <button onClick={() => openEdit(p)} style={{ marginRight: 8 }}>Редакт.</button>
-                    <button onClick={() => handleDelete(p)} style={{ color: '#dc2626' }}>Удалить</button>
+                    <button onClick={() => handleDelete(p)} style={{ background: 'transparent', color: '#dc2626', borderColor: '#dc2626' }}>Удалить</button>
                   </td>
                 )}
               </tr>
@@ -368,13 +368,13 @@ export function Purchases() {
         {summary !== null && purchases.length > 0 && (
           <tfoot>
             <tr>
-              <td colSpan={3} style={{ ...tdStyle, fontWeight: 600, borderTop: '2px solid #e5e7eb' }}>
+              <td colSpan={3} style={{ ...tdStyle, fontWeight: 600, background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }}>
                 Итого ({summary.count} закупок)
               </td>
-              <td style={{ ...tdStyle, fontWeight: 600, borderTop: '2px solid #e5e7eb' }}>
+              <td style={{ ...tdStyle, fontWeight: 600, background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }}>
                 {summary.total.toLocaleString('ru-RU', { minimumFractionDigits: 0 })} {summary.currency}
               </td>
-              <td colSpan={canWrite ? 2 : 1} style={{ borderTop: '2px solid #e5e7eb' }} />
+              <td colSpan={canWrite ? 2 : 1} style={{ background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }} />
             </tr>
           </tfoot>
         )}
@@ -618,27 +618,29 @@ const filterSelectStyle: CSSProperties = {
 const tableStyle: CSSProperties = {
   width: '100%',
   borderCollapse: 'collapse',
-  background: '#fff',
+  background: '#FEFEFE',
 }
 
 const thStyle: CSSProperties = {
   textAlign: 'left',
-  padding: '8px 12px',
-  borderBottom: '2px solid #e5e7eb',
+  padding: '10px 14px',
+  borderBottom: '1px solid #E8DDD3',
   fontWeight: 600,
   fontSize: 13,
+  background: '#F0E8DE',
+  color: '#8C7B6E',
 }
 
 const tdStyle: CSSProperties = {
-  padding: '8px 12px',
-  borderBottom: '1px solid #f3f4f6',
+  padding: '9px 14px',
+  borderBottom: '1px solid #E8DDD3',
   fontSize: 13,
 }
 
 const overlayStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0,0,0,0.45)',
+  background: 'rgba(44,43,40,0.5)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -646,13 +648,13 @@ const overlayStyle: CSSProperties = {
 }
 
 const modalStyle: CSSProperties = {
-  background: 'white',
-  borderRadius: 8,
+  background: '#FEFEFE',
+  borderRadius: 10,
   padding: 24,
   width: 480,
   maxHeight: '90vh',
   overflowY: 'auto',
-  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+  boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
 }
 
 const modalHeaderStyle: CSSProperties = {
@@ -669,6 +671,7 @@ const closeBtnStyle: CSSProperties = {
   cursor: 'pointer',
   lineHeight: 1,
   padding: 0,
+  color: '#8C7B6E',
 }
 
 const formStyle: CSSProperties = {
@@ -688,12 +691,12 @@ const labelStyle: CSSProperties = {
   gap: 4,
   fontSize: 13,
   fontWeight: 500,
-  color: '#374151',
+  color: '#2C2B28',
 }
 
 const inlineChannelStyle: CSSProperties = {
-  background: '#f9fafb',
-  border: '1px solid #e5e7eb',
+  background: '#F0E8DE',
+  border: '1px solid #E8DDD3',
   borderRadius: 6,
   padding: 12,
 }

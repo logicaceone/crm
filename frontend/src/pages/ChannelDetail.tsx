@@ -169,8 +169,8 @@ export function ChannelDetail() {
             onClick={() => setPeriod(p.value)}
             style={{
               ...periodBtnStyle,
-              background: period === p.value ? '#111827' : '#f3f4f6',
-              color: period === p.value ? '#fff' : '#374151',
+              background: period === p.value ? '#2C2B28' : '#F0E8DE',
+              color: period === p.value ? '#F0E8DE' : '#2C2B28',
             }}
           >
             {p.label}
@@ -300,7 +300,7 @@ export function ChannelDetail() {
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={chartCardStyle}>
-      <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#374151' }}>{title}</h3>
+      <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#2C2B28' }}>{title}</h3>
       {children}
     </div>
   )
@@ -318,14 +318,14 @@ const backBtnStyle: CSSProperties = {
   background: 'none',
   border: 'none',
   cursor: 'pointer',
-  fontSize: 14,
-  color: '#2563eb',
+  fontSize: 13,
+  color: '#C07D4A',
   padding: 0,
 }
 
 const cardStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: 20,
   marginBottom: 20,
@@ -340,7 +340,7 @@ const periodRowStyle: CSSProperties = {
 const periodBtnStyle: CSSProperties = {
   padding: '6px 14px',
   borderRadius: 6,
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E8DDD3',
   cursor: 'pointer',
   fontSize: 13,
   fontWeight: 500,
@@ -349,7 +349,7 @@ const periodBtnStyle: CSSProperties = {
 const emptyStyle: CSSProperties = {
   textAlign: 'center',
   padding: '48px 0',
-  color: '#9ca3af',
+  color: '#D4B896',
   fontSize: 15,
 }
 
@@ -361,8 +361,8 @@ const chartsRowStyle: CSSProperties = {
 }
 
 const chartCardStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: 16,
 }
@@ -370,8 +370,8 @@ const chartCardStyle: CSSProperties = {
 const tableStyle: CSSProperties = {
   width: '100%',
   borderCollapse: 'collapse',
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
   borderRadius: 8,
   overflow: 'hidden',
 }
@@ -379,22 +379,23 @@ const tableStyle: CSSProperties = {
 const thStyle: CSSProperties = {
   textAlign: 'left',
   padding: '10px 14px',
-  borderBottom: '2px solid #e5e7eb',
+  borderBottom: '1px solid #E8DDD3',
   fontWeight: 600,
   fontSize: 13,
-  background: '#f9fafb',
+  background: '#F0E8DE',
+  color: '#8C7B6E',
 }
 
 const tdStyle: CSSProperties = {
   padding: '8px 14px',
-  borderBottom: '1px solid #f3f4f6',
+  borderBottom: '1px solid #E8DDD3',
   fontSize: 13,
 }
 
 const overlayStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0,0,0,0.45)',
+  background: 'rgba(44,43,40,0.5)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -402,11 +403,11 @@ const overlayStyle: CSSProperties = {
 }
 
 const modalStyle: CSSProperties = {
-  background: 'white',
-  borderRadius: 8,
+  background: '#FEFEFE',
+  borderRadius: 10,
   padding: 24,
   width: 380,
-  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+  boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
 }
 
 const closeBtnStyle: CSSProperties = {
@@ -430,5 +431,5 @@ const labelStyle: CSSProperties = {
   gap: 4,
   fontSize: 13,
   fontWeight: 500,
-  color: '#374151',
+  color: '#2C2B28',
 }
