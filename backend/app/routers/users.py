@@ -6,22 +6,18 @@ from ..database import get_db
 from ..models.user import User, UserRole
 from ..schemas.auth import UserResponse
 from ..schemas.users import CreateUserRequest, UpdateUserRequest
-from .auth import get_current_user
+from .auth import require_roles
 
 router = APIRouter(prefix="/users", tags=["users"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Admin only")
-    return current_user
+admin_only = require_roles([UserRole.admin])
 
 
 @router.get("", response_model=list[UserResponse])
 def list_users(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(admin_only),
 ):
     return db.query(User).order_by(User.created_at).all()
 
@@ -30,7 +26,7 @@ def list_users(
 def create_user(
     data: CreateUserRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(admin_only),
 ):
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(status_code=409, detail="Username already exists")
@@ -50,7 +46,7 @@ def update_user(
     user_id: int,
     data: UpdateUserRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(admin_only),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -68,7 +64,7 @@ def update_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(admin_only),
 ):
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")

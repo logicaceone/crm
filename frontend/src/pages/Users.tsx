@@ -1,5 +1,4 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
-import { Navigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { apiFetch } from '../lib/api'
 
@@ -13,7 +12,7 @@ interface User {
 const ROLES = ['admin', 'manager', 'viewer'] as const
 
 export function Users() {
-  const { user: me, loading } = useAuth()
+  const { user: me } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [fetchError, setFetchError] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -24,10 +23,8 @@ export function Users() {
   const [modalSubmitting, setModalSubmitting] = useState(false)
 
   useEffect(() => {
-    if (!loading && me?.role === 'admin') {
-      loadUsers()
-    }
-  }, [loading, me])
+    loadUsers()
+  }, [])
 
   async function loadUsers() {
     const res = await apiFetch('/api/users')
@@ -82,18 +79,12 @@ export function Users() {
     }
   }
 
-  if (loading) return null
-  if (!me || me.role !== 'admin') return <Navigate to="/dashboard" replace />
+  if (!me) return null
 
   return (
-    <div style={{ padding: 24 }}>
-      <nav style={{ marginBottom: 24, display: 'flex', gap: 16 }}>
-        <Link to="/dashboard">Dashboard</Link>
-        <Link to="/users">Users</Link>
-      </nav>
-
+    <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ margin: 0 }}>Users</h1>
+        <h1 style={{ margin: 0 }}>Пользователи</h1>
         <button onClick={() => setShowModal(true)}>+ Add User</button>
       </div>
 
