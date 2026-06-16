@@ -15,6 +15,7 @@ from ..schemas.channels import (
     CreateStatRequest,
 )
 from .auth import get_current_user, require_roles
+from ..activity import log_action
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
@@ -103,12 +104,13 @@ def list_channels(
 def create_channel(
     data: CreateChannelRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     ch = Channel(**data.model_dump())
     db.add(ch)
     db.commit()
     db.refresh(ch)
+    log_action(db, current_user, "create", "channel", ch.id, f"Канал: {ch.name}")
     return ch
 
 
@@ -129,7 +131,7 @@ def update_channel(
     channel_id: int,
     data: UpdateChannelRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
@@ -138,6 +140,7 @@ def update_channel(
         setattr(ch, field, value)
     db.commit()
     db.refresh(ch)
+    log_action(db, current_user, "update", "channel", ch.id, f"Канал: {ch.name} обновлён")
     return ch
 
 
@@ -145,13 +148,15 @@ def update_channel(
 def delete_channel(
     channel_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
+    name = ch.name
     db.delete(ch)
     db.commit()
+    log_action(db, current_user, "delete", "channel", channel_id, f"Канал: {name}")
 
 
 @router.post("/{channel_id}/stats", response_model=ChannelStatResponse, status_code=201)
@@ -159,7 +164,7 @@ def add_stat(
     channel_id: int,
     data: CreateStatRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
@@ -173,6 +178,8 @@ def add_stat(
     db.add(stat)
     db.commit()
     db.refresh(stat)
+    log_action(db, current_user, "create", "channel_stat", stat.id,
+               f"Снапшот {ch.name}: {data.avg_views_per_post} просм/пост ({data.date})")
     return stat
 
 

@@ -11,6 +11,7 @@ import { Purchases } from './pages/Purchases'
 import { Sales } from './pages/Sales'
 import { Budget } from './pages/Budget'
 import { Users } from './pages/Users'
+import { Activity } from './pages/Activity'
 
 export default function App() {
   return (
@@ -28,7 +29,7 @@ export default function App() {
             <Route
               path="/dashboard"
               element={
-                <RoleRoute allowedRoles={['admin', 'manager', 'viewer']}>
+                <RoleRoute allowedRoles={['root', 'admin', 'manager', 'viewer']}>
                   <Dashboard />
                 </RoleRoute>
               }
@@ -36,7 +37,7 @@ export default function App() {
             <Route
               path="/channels"
               element={
-                <RoleRoute allowedRoles={['admin', 'manager']}>
+                <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
                   <Channels />
                 </RoleRoute>
               }
@@ -44,7 +45,7 @@ export default function App() {
             <Route
               path="/channels/:id"
               element={
-                <RoleRoute allowedRoles={['admin', 'manager']}>
+                <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
                   <ChannelDetail />
                 </RoleRoute>
               }
@@ -52,7 +53,7 @@ export default function App() {
             <Route
               path="/purchases"
               element={
-                <RoleRoute allowedRoles={['admin', 'manager']}>
+                <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
                   <Purchases />
                 </RoleRoute>
               }
@@ -60,7 +61,7 @@ export default function App() {
             <Route
               path="/sales"
               element={
-                <RoleRoute allowedRoles={['admin', 'manager']}>
+                <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
                   <Sales />
                 </RoleRoute>
               }
@@ -68,7 +69,7 @@ export default function App() {
             <Route
               path="/budget"
               element={
-                <RoleRoute allowedRoles={['admin', 'manager']}>
+                <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
                   <Budget />
                 </RoleRoute>
               }
@@ -76,8 +77,16 @@ export default function App() {
             <Route
               path="/users"
               element={
-                <RoleRoute allowedRoles={['admin']}>
+                <RoleRoute allowedRoles={['root', 'admin']}>
                   <Users />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/activity"
+              element={
+                <RoleRoute allowedRoles={['root', 'admin']}>
+                  <Activity />
                 </RoleRoute>
               }
             />

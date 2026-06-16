@@ -14,6 +14,7 @@ from ..schemas.sales import (
     SaleSummary,
 )
 from .auth import get_current_user, require_roles
+from ..activity import log_action
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
@@ -73,12 +74,15 @@ def create_sale(
     db: Session = Depends(get_db),
     current_user: User = Depends(write_access),
 ):
-    if not db.query(Channel).filter(Channel.id == data.channel_id).first():
+    ch = db.query(Channel).filter(Channel.id == data.channel_id).first()
+    if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
     sale = AdSale(**data.model_dump(), created_by=current_user.id)
     db.add(sale)
     db.commit()
     db.refresh(sale)
+    log_action(db, current_user, "create", "sale", sale.id,
+               f"Продажа #{sale.id}: {sale.client_name} / {ch.name}, {sale.price} {sale.currency}")
     return sale
 
 
@@ -99,7 +103,7 @@ def update_sale(
     sale_id: int,
     data: UpdateSaleRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     s = db.query(AdSale).filter(AdSale.id == sale_id).first()
     if not s:
@@ -108,6 +112,7 @@ def update_sale(
         setattr(s, field, value)
     db.commit()
     db.refresh(s)
+    log_action(db, current_user, "update", "sale", s.id, f"Продажа #{s.id} обновлена")
     return s
 
 
@@ -115,10 +120,12 @@ def update_sale(
 def delete_sale(
     sale_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     s = db.query(AdSale).filter(AdSale.id == sale_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Sale not found")
+    desc = f"Продажа #{s.id}: {s.client_name}, {s.price} {s.currency}"
     db.delete(s)
     db.commit()
+    log_action(db, current_user, "delete", "sale", sale_id, desc)

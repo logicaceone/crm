@@ -13,6 +13,13 @@ class ChannelRef(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CreatorRef(BaseModel):
+    id: int
+    username: str
+
+    model_config = {"from_attributes": True}
+
+
 class AdSaleResponse(BaseModel):
     id: int
     client_name: str
@@ -25,6 +32,7 @@ class AdSaleResponse(BaseModel):
     status: SaleStatus
     comment: Optional[str]
     created_by: int
+    creator: CreatorRef
     created_at: datetime
 
     model_config = {"from_attributes": True}

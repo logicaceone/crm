@@ -21,6 +21,7 @@ interface Sale {
   status: SaleStatus
   comment: string | null
   created_by: number
+  creator: { id: number; username: string }
   created_at: string
 }
 
@@ -331,13 +332,14 @@ export function Sales() {
             <th style={thStyle}>Формат</th>
             <th style={thStyle}>Сумма</th>
             <th style={thStyle}>Статус</th>
+            <th style={thStyle}>Автор</th>
             {canWrite && <th style={thStyle}>Действия</th>}
           </tr>
         </thead>
         <tbody>
           {sales.length === 0 ? (
             <tr>
-              <td colSpan={canWrite ? 7 : 6} style={{ ...tdStyle, textAlign: 'center', color: '#D4B896' }}>
+              <td colSpan={canWrite ? 8 : 7} style={{ ...tdStyle, textAlign: 'center', color: '#D4B896' }}>
                 Нет продаж
               </td>
             </tr>
@@ -356,6 +358,7 @@ export function Sales() {
                     {STATUS_LABELS[s.status]}
                   </span>
                 </td>
+                <td style={{ ...tdStyle, color: '#8C7B6E' }}>{s.creator.username}</td>
                 {canWrite && (
                   <td style={tdStyle}>
                     <button onClick={() => openEdit(s)} style={{ marginRight: 8 }}>Редакт.</button>
@@ -375,7 +378,7 @@ export function Sales() {
               <td style={{ ...tdStyle, fontWeight: 600, background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }}>
                 {summary.total.toLocaleString('ru-RU', { minimumFractionDigits: 0 })} {summary.currency}
               </td>
-              <td colSpan={canWrite ? 2 : 1} style={{ background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }} />
+              <td colSpan={canWrite ? 3 : 2} style={{ background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }} />
             </tr>
           </tfoot>
         )}

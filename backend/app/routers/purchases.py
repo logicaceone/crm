@@ -15,6 +15,7 @@ from ..schemas.purchases import (
     PurchaseSummary,
 )
 from .auth import get_current_user, require_roles
+from ..activity import log_action
 
 router_ext = APIRouter(prefix="/external-channels", tags=["external-channels"])
 router = APIRouter(prefix="/purchases", tags=["purchases"])
@@ -37,12 +38,13 @@ def list_external_channels(
 def create_external_channel(
     data: CreateExternalChannelRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     ch = ExternalChannel(**data.model_dump())
     db.add(ch)
     db.commit()
     db.refresh(ch)
+    log_action(db, current_user, "create", "external_channel", ch.id, f"Площадка: {ch.name}")
     return ch
 
 
@@ -50,13 +52,15 @@ def create_external_channel(
 def delete_external_channel(
     channel_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     ch = db.query(ExternalChannel).filter(ExternalChannel.id == channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="External channel not found")
+    name = ch.name
     db.delete(ch)
     db.commit()
+    log_action(db, current_user, "delete", "external_channel", channel_id, f"Площадка: {name}")
 
 
 # ── Purchases ────────────────────────────────────────────────────────────────
@@ -109,12 +113,15 @@ def create_purchase(
     db: Session = Depends(get_db),
     current_user: User = Depends(write_access),
 ):
-    if not db.query(ExternalChannel).filter(ExternalChannel.id == data.external_channel_id).first():
+    ext_ch = db.query(ExternalChannel).filter(ExternalChannel.id == data.external_channel_id).first()
+    if not ext_ch:
         raise HTTPException(status_code=404, detail="External channel not found")
     purchase = AdPurchase(**data.model_dump(), created_by=current_user.id)
     db.add(purchase)
     db.commit()
     db.refresh(purchase)
+    log_action(db, current_user, "create", "purchase", purchase.id,
+               f"Закупка #{purchase.id}: {ext_ch.name}, {purchase.price} {purchase.currency}")
     return purchase
 
 
@@ -135,7 +142,7 @@ def update_purchase(
     purchase_id: int,
     data: UpdatePurchaseRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     p = db.query(AdPurchase).filter(AdPurchase.id == purchase_id).first()
     if not p:
@@ -144,6 +151,7 @@ def update_purchase(
         setattr(p, field, value)
     db.commit()
     db.refresh(p)
+    log_action(db, current_user, "update", "purchase", p.id, f"Закупка #{p.id} обновлена")
     return p
 
 
@@ -151,10 +159,12 @@ def update_purchase(
 def delete_purchase(
     purchase_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(write_access),
+    current_user: User = Depends(write_access),
 ):
     p = db.query(AdPurchase).filter(AdPurchase.id == purchase_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Purchase not found")
+    desc = f"Закупка #{p.id}: {p.external_channel.name}, {p.price} {p.currency}"
     db.delete(p)
     db.commit()
+    log_action(db, current_user, "delete", "purchase", purchase_id, desc)

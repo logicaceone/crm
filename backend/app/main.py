@@ -13,6 +13,7 @@ from .routers.purchases import router as purchases_router, router_ext as ext_cha
 from .routers.sales import router as sales_router
 from .routers.budget import router as budget_router
 from .routers.dashboard import router as dashboard_router
+from .routers.activity import router as activity_router
 from .scheduler import start_scheduler, stop_scheduler
 
 
@@ -68,6 +69,7 @@ app.include_router(purchases_router)
 app.include_router(sales_router)
 app.include_router(budget_router)
 app.include_router(dashboard_router)
+app.include_router(activity_router)
 
 
 @app.get("/health")

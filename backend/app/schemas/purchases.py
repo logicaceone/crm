@@ -18,6 +18,13 @@ class CreateExternalChannelRequest(BaseModel):
     tg_link: Optional[str] = None
 
 
+class CreatorRef(BaseModel):
+    id: int
+    username: str
+
+    model_config = {"from_attributes": True}
+
+
 class AdPurchaseResponse(BaseModel):
     id: int
     external_channel_id: int
@@ -29,6 +36,7 @@ class AdPurchaseResponse(BaseModel):
     status: PurchaseStatus
     comment: Optional[str]
     created_by: int
+    creator: CreatorRef
     created_at: datetime
 
     model_config = {"from_attributes": True}

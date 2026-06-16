@@ -7,6 +7,7 @@ from ..models.user import User, UserRole
 from ..schemas.auth import UserResponse
 from ..schemas.users import CreateUserRequest, UpdateUserRequest
 from .auth import require_roles
+from ..activity import log_action
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -41,6 +42,7 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+    log_action(db, me, "create", "user", user.id, f"Пользователь {user.username} ({user.role.value})")
     return user
 
 
@@ -68,6 +70,7 @@ def update_user(
         user.password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
     db.commit()
     db.refresh(user)
+    log_action(db, me, "update", "user", user.id, f"Пользователь {user.username} обновлён")
     return user
 
 
@@ -86,5 +89,7 @@ def delete_user(
         raise HTTPException(status_code=403, detail="Cannot delete root user")
     if user.role == UserRole.admin and me.role != UserRole.root:
         raise HTTPException(status_code=403, detail="Only root can delete admin users")
+    username = user.username
     db.delete(user)
     db.commit()
+    log_action(db, me, "delete", "user", user_id, f"Пользователь {username}")

@@ -15,6 +15,7 @@ const MENU: MenuItem[] = [
   { to: '/sales', label: 'Продажи', roles: ['root', 'admin', 'manager'] },
   { to: '/budget', label: 'Бюджет', roles: ['root', 'admin', 'manager'] },
   { to: '/users', label: 'Пользователи', roles: ['root', 'admin'] },
+  { to: '/activity', label: 'Действия', roles: ['root', 'admin'] },
 ]
 
 export function Layout() {
