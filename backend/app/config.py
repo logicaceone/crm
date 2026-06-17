@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     cors_origin: str = "http://localhost:5173"
     telegram_bot_token: Optional[str] = None
     max_api_base_url: str = "https://platform-api.max.ru"
-    fernet_key: Optional[str] = None
     max_posts_sample: int = 20
 
     model_config = {"env_file": ".env"}

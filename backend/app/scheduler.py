@@ -91,12 +91,7 @@ async def sync_subscriber_counts() -> None:
 
 
 async def sync_max_channels() -> None:
-    if not settings.fernet_key:
-        logger.warning("FERNET_KEY not set, skipping Max.ru subscriber sync")
-        return
-
     from .services.max_parser import MaxParserService, MaxAuthError, MaxNotFoundError, MaxApiError
-    from .crypto import decrypt_token
 
     db = SessionLocal()
     today = date.today()
@@ -111,8 +106,7 @@ async def sync_max_channels() -> None:
 
         for ch in channels:
             try:
-                raw_token = decrypt_token(ch.max_bot_token)
-                svc = MaxParserService(raw_token, base_url=settings.max_api_base_url)
+                svc = MaxParserService(ch.max_bot_token, base_url=settings.max_api_base_url)
 
                 chat_id = ch.max_chat_id
                 if not chat_id and ch.max_chat_link:

@@ -25,15 +25,6 @@ read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, Us
 write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
 
 
-def _encrypt(plain: str) -> str:
-    from ..crypto import encrypt_token
-    return encrypt_token(plain)
-
-
-def _decrypt(enc: str) -> str:
-    from ..crypto import decrypt_token
-    return decrypt_token(enc)
-
 
 def _last_subscriber_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:
     return (
@@ -132,14 +123,13 @@ def create_channel(
     db: Session = Depends(get_db),
     current_user: User = Depends(write_access),
 ):
-    raw_token = data.max_bot_token
     ch = Channel(
         name=data.name,
         platform=ChannelPlatform(data.platform),
         tg_link=data.tg_link or None,
         description=data.description or None,
         max_chat_link=data.max_chat_link or None,
-        max_bot_token=_encrypt(raw_token) if raw_token and settings.fernet_key else None,
+        max_bot_token=data.max_bot_token or None,
     )
     db.add(ch)
     db.commit()
@@ -176,11 +166,8 @@ def update_channel(
         if field == "platform":
             ch.platform = ChannelPlatform(value) if value else ch.platform
         elif field == "max_bot_token":
-            if value and settings.fernet_key:
-                ch.max_bot_token = _encrypt(value)
-            elif value and not settings.fernet_key:
-                raise HTTPException(status_code=500, detail="FERNET_KEY не настроен на сервере")
-            # if value is None/empty, leave token unchanged
+            if value:
+                ch.max_bot_token = value  # only update if non-empty; leave unchanged otherwise
         else:
             setattr(ch, field, value)
     db.commit()
@@ -220,17 +207,10 @@ async def sync_channel(
         raise HTTPException(status_code=400, detail="Синхронизация доступна только для Max.ru каналов")
     if not ch.max_bot_token:
         raise HTTPException(status_code=400, detail="Bot token не задан для этого канала")
-    if not settings.fernet_key:
-        raise HTTPException(status_code=500, detail="FERNET_KEY не настроен на сервере")
 
     from ..services.max_parser import MaxParserService, MaxAuthError, MaxNotFoundError, MaxApiError
 
-    try:
-        raw_token = _decrypt(ch.max_bot_token)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка расшифровки токена: {e}")
-
-    svc = MaxParserService(raw_token, base_url=settings.max_api_base_url)
+    svc = MaxParserService(ch.max_bot_token, base_url=settings.max_api_base_url)
 
     # Step 1: resolve chat_id if not cached
     chat_id = ch.max_chat_id
