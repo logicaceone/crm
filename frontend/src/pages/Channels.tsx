@@ -16,12 +16,25 @@ interface ChannelStat {
 interface Channel {
   id: number
   name: string
+  platform: 'telegram' | 'max'
   tg_link: string | null
   description: string | null
+  max_chat_id: number | null
+  max_chat_link: string | null
+  max_bot_token_set: boolean
   created_at: string
   last_subscriber_stat: ChannelStat | null
   last_views_stat: ChannelStat | null
   stat_30d_ago: ChannelStat | null
+}
+
+interface ChannelForm {
+  name: string
+  platform: 'telegram' | 'max'
+  tg_link: string
+  description: string
+  max_chat_link: string
+  max_bot_token: string
 }
 
 function growth(ch: Channel): string {
@@ -30,7 +43,34 @@ function growth(ch: Channel): string {
   return diff >= 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString()
 }
 
-const emptyForm = { name: '', tg_link: '', description: '' }
+function growthColor(ch: Channel): string {
+  if (!ch.last_subscriber_stat || !ch.stat_30d_ago) return 'inherit'
+  const diff = (ch.last_subscriber_stat.subscribers_count ?? 0) - (ch.stat_30d_ago.subscribers_count ?? 0)
+  if (diff > 0) return '#16a34a'
+  if (diff < 0) return '#dc2626'
+  return 'inherit'
+}
+
+const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', description: '', max_chat_link: '', max_bot_token: '' }
+
+function PlatformBadge({ platform }: { platform: 'telegram' | 'max' }) {
+  const isTG = platform === 'telegram'
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: 12,
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: '0.03em',
+      background: isTG ? '#0088cc18' : '#ff000018',
+      color: isTG ? '#0088cc' : '#c0392b',
+      border: `1px solid ${isTG ? '#0088cc44' : '#c0392b44'}`,
+    }}>
+      {isTG ? 'TG' : 'MAX'}
+    </span>
+  )
+}
 
 export function Channels() {
   const { user } = useAuth()
@@ -43,18 +83,18 @@ export function Channels() {
   const [error, setError] = useState('')
 
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState(emptyForm)
+  const [createForm, setCreateForm] = useState<ChannelForm>(emptyForm)
   const [createError, setCreateError] = useState('')
   const [createSubmitting, setCreateSubmitting] = useState(false)
 
   const [editChannel, setEditChannel] = useState<Channel | null>(null)
-  const [editForm, setEditForm] = useState(emptyForm)
+  const [editForm, setEditForm] = useState<ChannelForm>(emptyForm)
   const [editError, setEditError] = useState('')
   const [editSubmitting, setEditSubmitting] = useState(false)
 
-  useEffect(() => {
-    load()
-  }, [])
+  const [syncingId, setSyncingId] = useState<number | null>(null)
+
+  useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
@@ -72,14 +112,18 @@ export function Channels() {
     setCreateError('')
     setCreateSubmitting(true)
     try {
-      const res = await apiFetch('/api/channels', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: createForm.name,
-          tg_link: createForm.tg_link || null,
-          description: createForm.description || null,
-        }),
-      })
+      const body: Record<string, unknown> = {
+        name: createForm.name,
+        platform: createForm.platform,
+        description: createForm.description || null,
+      }
+      if (createForm.platform === 'telegram') {
+        body.tg_link = createForm.tg_link || null
+      } else {
+        body.max_chat_link = createForm.max_chat_link || null
+        if (createForm.max_bot_token) body.max_bot_token = createForm.max_bot_token
+      }
+      const res = await apiFetch('/api/channels', { method: 'POST', body: JSON.stringify(body) })
       if (!res.ok) {
         const d = await res.json()
         const msg = d.detail ?? 'Ошибка создания'
@@ -87,7 +131,12 @@ export function Channels() {
         toast.error(msg)
         return
       }
-      const created: Channel = { ...(await res.json()), last_subscriber_stat: null, last_views_stat: null, stat_30d_ago: null }
+      const created: Channel = {
+        ...(await res.json()),
+        last_subscriber_stat: null,
+        last_views_stat: null,
+        stat_30d_ago: null,
+      }
       setChannels(prev => [...prev, created])
       setShowCreate(false)
       setCreateForm(emptyForm)
@@ -99,7 +148,14 @@ export function Channels() {
 
   function openEdit(ch: Channel) {
     setEditChannel(ch)
-    setEditForm({ name: ch.name, tg_link: ch.tg_link ?? '', description: ch.description ?? '' })
+    setEditForm({
+      name: ch.name,
+      platform: ch.platform,
+      tg_link: ch.tg_link ?? '',
+      description: ch.description ?? '',
+      max_chat_link: ch.max_chat_link ?? '',
+      max_bot_token: '',  // never prefill — user must re-enter to change
+    })
     setEditError('')
   }
 
@@ -109,13 +165,20 @@ export function Channels() {
     setEditError('')
     setEditSubmitting(true)
     try {
+      const body: Record<string, unknown> = {
+        name: editForm.name || undefined,
+        platform: editForm.platform,
+        description: editForm.description || null,
+      }
+      if (editForm.platform === 'telegram') {
+        body.tg_link = editForm.tg_link || null
+      } else {
+        body.max_chat_link = editForm.max_chat_link || null
+        if (editForm.max_bot_token) body.max_bot_token = editForm.max_bot_token
+      }
       const res = await apiFetch(`/api/channels/${editChannel.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          name: editForm.name || undefined,
-          tg_link: editForm.tg_link || null,
-          description: editForm.description || null,
-        }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const d = await res.json()
@@ -150,8 +213,29 @@ export function Channels() {
     }
   }
 
+  async function handleSync(ch: Channel) {
+    setSyncingId(ch.id)
+    try {
+      const res = await apiFetch(`/api/channels/${ch.id}/sync`, { method: 'POST' })
+      if (!res.ok) {
+        const d = await res.json()
+        toast.error(d.detail ?? 'Ошибка синхронизации')
+        return
+      }
+      const result = await res.json()
+      const subs = result.subscribers != null ? result.subscribers.toLocaleString() : '?'
+      toast.success(`Синхронизировано: ${subs} подписчиков`)
+      // reload to pick up new stat
+      await load()
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
   if (loading) return <p>Загрузка…</p>
   if (error) return <p style={{ color: 'red' }}>{error}</p>
+
+  const colCount = canWrite ? 7 : 6
 
   return (
     <div>
@@ -167,6 +251,7 @@ export function Channels() {
       <table style={tableStyle}>
         <thead>
           <tr>
+            <th style={thStyle}>Платформа</th>
             <th style={thStyle}>Название</th>
             <th style={thStyle}>Ссылка</th>
             <th style={thStyle}>Подписчики</th>
@@ -178,7 +263,7 @@ export function Channels() {
         <tbody>
           {channels.length === 0 && (
             <tr>
-              <td colSpan={canWrite ? 6 : 5} style={{ ...tdStyle, color: '#D4B896', textAlign: 'center' }}>
+              <td colSpan={colCount} style={{ ...tdStyle, color: '#D4B896', textAlign: 'center' }}>
                 Нет каналов
               </td>
             </tr>
@@ -186,12 +271,23 @@ export function Channels() {
           {channels.map(ch => (
             <tr key={ch.id}>
               <td style={tdStyle}>
+                <PlatformBadge platform={ch.platform} />
+              </td>
+              <td style={tdStyle}>
                 <Link to={`/channels/${ch.id}`}>{ch.name}</Link>
               </td>
               <td style={tdStyle}>
-                {ch.tg_link
-                  ? <a href={ch.tg_link} target="_blank" rel="noopener noreferrer" style={{ color: '#C07D4A' }}>{ch.tg_link}</a>
-                  : '—'}
+                {ch.platform === 'telegram' && ch.tg_link && (
+                  <a href={ch.tg_link} target="_blank" rel="noopener noreferrer" style={{ color: '#C07D4A' }}>
+                    {ch.tg_link}
+                  </a>
+                )}
+                {ch.platform === 'max' && ch.max_chat_link && (
+                  <a href={ch.max_chat_link} target="_blank" rel="noopener noreferrer" style={{ color: '#C07D4A' }}>
+                    {ch.max_chat_link}
+                  </a>
+                )}
+                {!ch.tg_link && !ch.max_chat_link && '—'}
               </td>
               <td style={tdStyle}>
                 {ch.last_subscriber_stat?.subscribers_count?.toLocaleString() ?? '—'}
@@ -204,8 +300,22 @@ export function Channels() {
               </td>
               {canWrite && (
                 <td style={tdStyle}>
-                  <button onClick={() => openEdit(ch)} style={{ marginRight: 8 }}>Редакт.</button>
-                  <button onClick={() => handleDelete(ch)} style={{ background: 'transparent', color: '#dc2626', borderColor: '#dc2626' }}>Удалить</button>
+                  <button onClick={() => openEdit(ch)} style={{ marginRight: 6 }}>Редакт.</button>
+                  {ch.platform === 'max' && ch.max_bot_token_set && (
+                    <button
+                      onClick={() => handleSync(ch)}
+                      disabled={syncingId === ch.id}
+                      style={{ marginRight: 6, background: 'transparent', color: '#0088cc', borderColor: '#0088cc44' }}
+                    >
+                      {syncingId === ch.id ? '…' : 'Синк'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDelete(ch)}
+                    style={{ background: 'transparent', color: '#dc2626', borderColor: '#dc262644' }}
+                  >
+                    Удалить
+                  </button>
                 </td>
               )}
             </tr>
@@ -215,79 +325,134 @@ export function Channels() {
 
       {showCreate && (
         <Modal title="Добавить канал" onClose={() => setShowCreate(false)}>
-          <form onSubmit={handleCreate} style={formStyle}>
-            {createError && <div style={errStyle}>{createError}</div>}
-            <input
-              placeholder="Название *"
-              value={createForm.name}
-              onChange={e => setCreateForm(p => ({ ...p, name: e.target.value }))}
-              required
-              autoFocus
-            />
-            <input
-              placeholder="Ссылка (https://t.me/...)"
-              value={createForm.tg_link}
-              onChange={e => setCreateForm(p => ({ ...p, tg_link: e.target.value }))}
-            />
-            <textarea
-              placeholder="Описание"
-              rows={3}
-              value={createForm.description}
-              onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))}
-              style={{ resize: 'vertical' }}
-            />
-            <div style={actionsStyle}>
-              <button type="button" onClick={() => setShowCreate(false)}>Отмена</button>
-              <button type="submit" disabled={createSubmitting}>
-                {createSubmitting ? 'Создание…' : 'Создать'}
-              </button>
-            </div>
-          </form>
+          <ChannelForm
+            form={createForm}
+            onChange={setCreateForm}
+            onSubmit={handleCreate}
+            error={createError}
+            submitting={createSubmitting}
+            onCancel={() => setShowCreate(false)}
+            submitLabel="Создать"
+          />
         </Modal>
       )}
 
       {editChannel && (
         <Modal title="Редактировать канал" onClose={() => setEditChannel(null)}>
-          <form onSubmit={handleEdit} style={formStyle}>
-            {editError && <div style={errStyle}>{editError}</div>}
-            <input
-              placeholder="Название *"
-              value={editForm.name}
-              onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
-              required
-              autoFocus
-            />
-            <input
-              placeholder="Ссылка (https://t.me/...)"
-              value={editForm.tg_link}
-              onChange={e => setEditForm(p => ({ ...p, tg_link: e.target.value }))}
-            />
-            <textarea
-              placeholder="Описание"
-              rows={3}
-              value={editForm.description}
-              onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
-              style={{ resize: 'vertical' }}
-            />
-            <div style={actionsStyle}>
-              <button type="button" onClick={() => setEditChannel(null)}>Отмена</button>
-              <button type="submit" disabled={editSubmitting}>
-                {editSubmitting ? 'Сохранение…' : 'Сохранить'}
-              </button>
-            </div>
-          </form>
+          <ChannelForm
+            form={editForm}
+            onChange={setEditForm}
+            onSubmit={handleEdit}
+            error={editError}
+            submitting={editSubmitting}
+            onCancel={() => setEditChannel(null)}
+            submitLabel="Сохранить"
+            isEdit
+            existingTokenSet={editChannel.max_bot_token_set}
+            onSync={editChannel.platform === 'max' && editChannel.max_bot_token_set
+              ? () => handleSync(editChannel)
+              : undefined}
+            syncing={syncingId === editChannel.id}
+          />
         </Modal>
       )}
     </div>
   )
 }
 
-function growthColor(ch: Channel): string {
-  if (!ch.last_subscriber_stat || !ch.stat_30d_ago) return 'inherit'
-  const diff = (ch.last_subscriber_stat.subscribers_count ?? 0) - (ch.stat_30d_ago.subscribers_count ?? 0)
-  if (diff > 0) return '#16a34a'
-  if (diff < 0) return '#dc2626'
-  return 'inherit'
+interface ChannelFormProps {
+  form: ChannelForm
+  onChange: (f: ChannelForm) => void
+  onSubmit: (e: FormEvent) => void
+  error: string
+  submitting: boolean
+  onCancel: () => void
+  submitLabel: string
+  isEdit?: boolean
+  existingTokenSet?: boolean
+  onSync?: () => void
+  syncing?: boolean
+}
+
+function ChannelForm({ form, onChange, onSubmit, error, submitting, onCancel, submitLabel, isEdit, existingTokenSet, onSync, syncing }: ChannelFormProps) {
+  const set = (patch: Partial<ChannelForm>) => onChange({ ...form, ...patch })
+  const isMax = form.platform === 'max'
+
+  return (
+    <form onSubmit={onSubmit} style={formStyle}>
+      {error && <div style={errStyle}>{error}</div>}
+      <input
+        placeholder="Название *"
+        value={form.name}
+        onChange={e => set({ name: e.target.value })}
+        required
+        autoFocus
+      />
+      <label style={labelStyle}>
+        Платформа
+        <select value={form.platform} onChange={e => set({ platform: e.target.value as 'telegram' | 'max' })}>
+          <option value="telegram">Telegram</option>
+          <option value="max">Max.ru</option>
+        </select>
+      </label>
+
+      {!isMax && (
+        <input
+          placeholder="Ссылка Telegram (https://t.me/...)"
+          value={form.tg_link}
+          onChange={e => set({ tg_link: e.target.value })}
+        />
+      )}
+
+      {isMax && (
+        <>
+          <input
+            placeholder="Ссылка Max.ru (https://max.ru/...)"
+            value={form.max_chat_link}
+            onChange={e => set({ max_chat_link: e.target.value })}
+          />
+          <label style={labelStyle}>
+            Bot Token
+            {isEdit && existingTokenSet && (
+              <span style={{ fontWeight: 400, color: '#8C7B6E', marginLeft: 4 }}>(оставьте пустым чтобы не менять)</span>
+            )}
+            <input
+              placeholder={isEdit && existingTokenSet ? '••••••••' : 'Bearer токен бота Max.ru'}
+              value={form.max_bot_token}
+              onChange={e => set({ max_bot_token: e.target.value })}
+              type="password"
+              autoComplete="off"
+            />
+          </label>
+        </>
+      )}
+
+      <textarea
+        placeholder="Описание"
+        rows={3}
+        value={form.description}
+        onChange={e => set({ description: e.target.value })}
+        style={{ resize: 'vertical' }}
+      />
+
+      <div style={actionsStyle}>
+        {onSync && (
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={syncing}
+            style={{ marginRight: 'auto', background: 'transparent', color: '#0088cc', borderColor: '#0088cc44', fontSize: 13 }}
+          >
+            {syncing ? 'Синхронизация…' : 'Синхронизировать'}
+          </button>
+        )}
+        <button type="button" onClick={onCancel}>Отмена</button>
+        <button type="submit" disabled={submitting}>
+          {submitting ? `${submitLabel}…` : submitLabel}
+        </button>
+      </div>
+    </form>
+  )
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -304,17 +469,8 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   )
 }
 
-const headerRowStyle: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: 16,
-}
-
-const tableStyle: CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-}
+const headerRowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
+const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse' }
 
 const thStyle: CSSProperties = {
   textAlign: 'left',
@@ -346,19 +502,22 @@ const modalStyle: CSSProperties = {
   background: '#FEFEFE',
   borderRadius: 10,
   padding: 28,
-  width: 400,
+  width: 420,
   boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
+  maxHeight: '90vh',
+  overflowY: 'auto',
 }
 
-const formStyle: CSSProperties = {
+const formStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 }
+const errStyle: CSSProperties = { color: '#dc2626', fontSize: 14 }
+
+const labelStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 12,
-}
-
-const errStyle: CSSProperties = {
-  color: '#dc2626',
-  fontSize: 14,
+  gap: 4,
+  fontSize: 13,
+  fontWeight: 500,
+  color: '#2C2B28',
 }
 
 const actionsStyle: CSSProperties = {
@@ -366,4 +525,5 @@ const actionsStyle: CSSProperties = {
   gap: 8,
   justifyContent: 'flex-end',
   marginTop: 4,
+  flexWrap: 'wrap',
 }

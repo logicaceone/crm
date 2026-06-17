@@ -16,11 +16,21 @@ class ChannelStatResponse(BaseModel):
 class ChannelResponse(BaseModel):
     id: int
     name: str
+    platform: str
     tg_link: Optional[str]
     description: Optional[str]
+    max_chat_id: Optional[int] = None
+    max_chat_link: Optional[str] = None
+    max_bot_token_set: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_with_token_flag(cls, ch) -> "ChannelResponse":
+        obj = cls.model_validate(ch)
+        object.__setattr__(obj, "max_bot_token_set", bool(ch.max_bot_token))
+        return obj
 
 
 class ChannelWithStats(ChannelResponse):
@@ -31,16 +41,28 @@ class ChannelWithStats(ChannelResponse):
 
 class CreateChannelRequest(BaseModel):
     name: str
+    platform: str = "telegram"
     tg_link: Optional[str] = None
     description: Optional[str] = None
+    max_chat_link: Optional[str] = None
+    max_bot_token: Optional[str] = None
 
 
 class UpdateChannelRequest(BaseModel):
     name: Optional[str] = None
+    platform: Optional[str] = None
     tg_link: Optional[str] = None
     description: Optional[str] = None
+    max_chat_link: Optional[str] = None
+    max_bot_token: Optional[str] = None  # plaintext; backend encrypts before storing
 
 
 class CreateStatRequest(BaseModel):
     date: date
     avg_views_per_post: int
+
+
+class SyncResult(BaseModel):
+    subscribers: Optional[int]
+    avg_views: Optional[int]
+    synced_at: datetime

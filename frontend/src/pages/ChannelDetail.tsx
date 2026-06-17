@@ -24,8 +24,11 @@ interface ChannelStat {
 interface Channel {
   id: number
   name: string
+  platform: 'telegram' | 'max'
   tg_link: string | null
   description: string | null
+  max_chat_link: string | null
+  max_bot_token_set: boolean
   created_at: string
 }
 
@@ -66,6 +69,7 @@ export function ChannelDetail() {
   const [period, setPeriod] = useState<Period>('all')
   const [pageError, setPageError] = useState('')
 
+  const [syncing, setSyncing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState({ date: toIso(new Date()), avg_views_per_post: '' })
   const [formError, setFormError] = useState('')
@@ -84,6 +88,25 @@ export function ChannelDetail() {
     if (!res.ok) { setPageError('Канал не найден'); return }
     const data = await res.json()
     setChannel(data)
+  }
+
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const res = await apiFetch(`/api/channels/${id}/sync`, { method: 'POST' })
+      if (!res.ok) {
+        const d = await res.json()
+        toast.error(d.detail ?? 'Ошибка синхронизации')
+        return
+      }
+      const result = await res.json()
+      const subs = result.subscribers != null ? result.subscribers.toLocaleString() : '?'
+      toast.success(`Синхронизировано: ${subs} подписчиков`)
+      await loadChannel()
+      await loadStats(period)
+    } finally {
+      setSyncing(false)
+    }
   }
 
   async function loadStats(p: Period) {
@@ -146,10 +169,29 @@ export function ChannelDetail() {
       <section style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h1 style={{ margin: '0 0 4px' }}>{channel.name}</h1>
-            {channel.tg_link && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <h1 style={{ margin: 0 }}>{channel.name}</h1>
+              <span style={{
+                display: 'inline-block',
+                padding: '2px 8px',
+                borderRadius: 12,
+                fontSize: 11,
+                fontWeight: 700,
+                background: channel.platform === 'telegram' ? '#0088cc18' : '#ff000018',
+                color: channel.platform === 'telegram' ? '#0088cc' : '#c0392b',
+                border: `1px solid ${channel.platform === 'telegram' ? '#0088cc44' : '#c0392b44'}`,
+              }}>
+                {channel.platform === 'telegram' ? 'TG' : 'MAX'}
+              </span>
+            </div>
+            {channel.platform === 'telegram' && channel.tg_link && (
               <a href={channel.tg_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14 }}>
                 {channel.tg_link}
+              </a>
+            )}
+            {channel.platform === 'max' && channel.max_chat_link && (
+              <a href={channel.max_chat_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14 }}>
+                {channel.max_chat_link}
               </a>
             )}
             {channel.description && (
@@ -159,11 +201,22 @@ export function ChannelDetail() {
               Добавлен: {new Date(channel.created_at).toLocaleDateString('ru-RU')}
             </p>
           </div>
-          {canWrite && (
-            <button onClick={() => { setShowAdd(true); setFormError('') }}>
-              + Добавить снапшот просмотров
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {canWrite && channel.platform === 'max' && channel.max_bot_token_set && (
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                style={{ background: 'transparent', color: '#0088cc', borderColor: '#0088cc44' }}
+              >
+                {syncing ? 'Синхронизация…' : 'Синхронизировать'}
+              </button>
+            )}
+            {canWrite && (
+              <button onClick={() => { setShowAdd(true); setFormError('') }}>
+                + Добавить снапшот просмотров
+              </button>
+            )}
+          </div>
         </div>
       </section>
 
