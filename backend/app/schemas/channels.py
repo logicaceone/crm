@@ -9,6 +9,7 @@ class ChannelStatResponse(BaseModel):
     date: date
     subscribers_count: Optional[int] = None
     avg_views_per_post: Optional[int] = None
+    posts_sampled: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -65,4 +66,6 @@ class CreateStatRequest(BaseModel):
 class SyncResult(BaseModel):
     subscribers: Optional[int]
     avg_views: Optional[int]
+    posts_sampled: Optional[int]
+    posts_total: Optional[int]
     synced_at: datetime

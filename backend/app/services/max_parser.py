@@ -28,7 +28,7 @@ class MaxParserService:
 
     @property
     def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.bot_token}"}
+        return {"Authorization": self.bot_token}
 
     async def _get(self, client: httpx.AsyncClient, path: str, **params) -> dict:
         url = f"{self.base_url}{path}"
@@ -69,7 +69,7 @@ class MaxParserService:
 
         async with httpx.AsyncClient(timeout=15) as client:
             try:
-                data = await self._get(client, "/v1/chats", username=username)
+                data = await self._get(client, "/chats", username=username)
                 items = data.get("chats") or data.get("items") or []
                 if items:
                     return items[0].get("chat_id") or items[0].get("id")
@@ -77,19 +77,43 @@ class MaxParserService:
                 pass
         return None
 
-    async def get_subscribers(self, chat_id: int) -> Optional[int]:
-        """Return current member/subscriber count for a Max.ru chat."""
+    async def get_chat_info(self, chat_id: int) -> dict:
+        """Return {'subscribers': int|None, 'posts_total': int|None} from GET /chats/{chat_id}."""
         async with httpx.AsyncClient(timeout=15) as client:
-            data = await self._get(client, f"/v1/chats/{chat_id}")
+            data = await self._get(client, f"/chats/{chat_id}")
             chat = data.get("chat") or data
-            return chat.get("members_count") or chat.get("subscribers_count")
+            return {
+                "subscribers": chat.get("participants_count") or chat.get("members_count"),
+                "posts_total": chat.get("messages_count"),
+            }
 
-    async def get_avg_views(self, chat_id: int, last_n: int = 20) -> Optional[int]:
-        """Return average views across the last `last_n` messages."""
+    async def get_avg_views(
+        self,
+        chat_id: int,
+        posts_total: Optional[int],
+        posts_limit: int = 20,
+    ) -> Optional[dict]:
+        """
+        Return avg views computed from last `posts_limit` posts.
+        Only messages with a `stat` field are included (channel posts).
+        Returns None if there are no eligible posts.
+        Result: {'avg_views': int, 'posts_sampled': int, 'posts_total': int|None}
+        """
         async with httpx.AsyncClient(timeout=15) as client:
-            data = await self._get(client, f"/v1/chats/{chat_id}/messages", count=last_n)
+            data = await self._get(client, "/messages", chat_id=chat_id, count=posts_limit)
             messages = data.get("messages") or data.get("items") or []
-            views = [m["views"] for m in messages if m.get("views") is not None]
-            if not views:
-                return None
-            return int(sum(views) / len(views))
+
+        views = []
+        for msg in messages:
+            stat = msg.get("stat")
+            if stat is not None and stat.get("views") is not None:
+                views.append(stat["views"])
+
+        if not views:
+            return None
+
+        return {
+            "avg_views": round(sum(views) / len(views)),
+            "posts_sampled": len(views),
+            "posts_total": posts_total,
+        }

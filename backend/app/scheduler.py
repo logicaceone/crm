@@ -126,33 +126,42 @@ async def sync_max_channels() -> None:
                     failed += 1
                     continue
 
-                subscribers = await svc.get_subscribers(chat_id)
+                # Two requests: chat info (subscribers + posts_total) + messages (avg_views)
+                info = await svc.get_chat_info(chat_id)
+                subscribers = info["subscribers"]
                 if subscribers is None:
                     print(f"[MAX] No subscriber count returned for {ch.name}", flush=True)
                     failed += 1
                     continue
 
+                avg_result = await svc.get_avg_views(
+                    chat_id,
+                    posts_total=info["posts_total"],
+                    posts_limit=settings.max_posts_sample,
+                )
+                avg_views = avg_result["avg_views"] if avg_result else None
+                posts_sampled = avg_result["posts_sampled"] if avg_result else None
+
                 existing = (
                     db.query(ChannelStat)
-                    .filter(
-                        ChannelStat.channel_id == ch.id,
-                        ChannelStat.date == today,
-                        ChannelStat.avg_views_per_post.is_(None),
-                    )
+                    .filter(ChannelStat.channel_id == ch.id, ChannelStat.date == today)
                     .first()
                 )
                 if existing:
                     existing.subscribers_count = subscribers
+                    existing.avg_views_per_post = avg_views
+                    existing.posts_sampled = posts_sampled
                 else:
                     db.add(ChannelStat(
                         channel_id=ch.id,
                         date=today,
                         subscribers_count=subscribers,
-                        avg_views_per_post=None,
+                        avg_views_per_post=avg_views,
+                        posts_sampled=posts_sampled,
                     ))
                 db.commit()
                 synced += 1
-                print(f"[MAX] Synced {ch.name}: {subscribers} subscribers", flush=True)
+                print(f"[MAX] Synced {ch.name}: {subscribers} subs, {avg_views} avg_views ({posts_sampled} posts)", flush=True)
 
             except (MaxAuthError, MaxNotFoundError) as exc:
                 print(f"[MAX] Skipping {ch.name}: {exc}", flush=True)

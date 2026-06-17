@@ -32,6 +32,10 @@ interface Channel {
   created_at: string
 }
 
+interface ChannelStatWithSampled extends ChannelStat {
+  posts_sampled?: number | null
+}
+
 type Period = '7d' | '30d' | '90d' | 'all'
 
 const PERIODS: { label: string; value: Period }[] = [
@@ -65,7 +69,7 @@ export function ChannelDetail() {
   const canWrite = user?.role === 'root' || user?.role === 'admin' || user?.role === 'manager'
 
   const [channel, setChannel] = useState<Channel | null>(null)
-  const [stats, setStats] = useState<ChannelStat[]>([])
+  const [stats, setStats] = useState<ChannelStatWithSampled[]>([])
   const [period, setPeriod] = useState<Period>('all')
   const [pageError, setPageError] = useState('')
 
@@ -271,6 +275,11 @@ export function ChannelDetail() {
                   </LineChart>
                 </ResponsiveContainer>
               )}
+              {channel.platform === 'max' && (
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: '#8C7B6E' }}>
+                  Среднее считается по последним 20 постам (только посты с полем stat)
+                </p>
+              )}
             </ChartCard>
           </div>
 
@@ -316,13 +325,19 @@ export function ChannelDetail() {
                   <tr>
                     <th style={thStyle}>Дата</th>
                     <th style={thStyle}>Ср. просмотры на пост</th>
+                    {channel.platform === 'max' && <th style={thStyle}>Постов в выборке</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {[...viewsStats].reverse().map(s => (
+                  {([...viewsStats] as ChannelStatWithSampled[]).reverse().map(s => (
                     <tr key={s.id}>
                       <td style={tdStyle}>{s.date}</td>
                       <td style={tdStyle}>{s.avg_views_per_post?.toLocaleString() ?? '—'}</td>
+                      {channel.platform === 'max' && (
+                        <td style={{ ...tdStyle, color: '#8C7B6E' }}>
+                          {s.posts_sampled != null ? s.posts_sampled : '—'}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

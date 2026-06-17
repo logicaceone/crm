@@ -210,7 +210,7 @@ async def sync_channel(
     db: Session = Depends(get_db),
     current_user: User = Depends(write_access),
 ):
-    """Manually trigger a Max.ru subscriber/views sync for a channel."""
+    """Manually trigger a Max.ru subscriber + avg_views sync for a channel."""
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -232,6 +232,7 @@ async def sync_channel(
 
     svc = MaxParserService(raw_token, base_url=settings.max_api_base_url)
 
+    # Step 1: resolve chat_id if not cached
     chat_id = ch.max_chat_id
     if not chat_id and ch.max_chat_link:
         try:
@@ -248,8 +249,17 @@ async def sync_channel(
         raise HTTPException(status_code=400, detail="chat_id не задан и не удалось получить из ссылки")
 
     try:
-        subscribers = await svc.get_subscribers(chat_id)
-        avg_views = await svc.get_avg_views(chat_id)
+        # Step 2: GET /chats/{chat_id} → subscribers + posts_total
+        info = await svc.get_chat_info(chat_id)
+        subscribers = info["subscribers"]
+        posts_total = info["posts_total"]
+
+        # Step 3: GET /messages → avg_views_per_post
+        avg_result = await svc.get_avg_views(
+            chat_id,
+            posts_total=posts_total,
+            posts_limit=settings.max_posts_sample,
+        )
     except MaxAuthError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except MaxNotFoundError as e:
@@ -257,31 +267,40 @@ async def sync_channel(
     except MaxApiError as e:
         raise HTTPException(status_code=502, detail=f"Ошибка Max API: {e}")
 
+    avg_views = avg_result["avg_views"] if avg_result else None
+    posts_sampled = avg_result["posts_sampled"] if avg_result else None
+
+    # Step 4: upsert ChannelStat for today with both subscribers + views
     today = date.today()
     existing = (
         db.query(ChannelStat)
-        .filter(
-            ChannelStat.channel_id == ch.id,
-            ChannelStat.date == today,
-            ChannelStat.avg_views_per_post.is_(None),
-        )
+        .filter(ChannelStat.channel_id == ch.id, ChannelStat.date == today)
         .first()
     )
     if existing:
         existing.subscribers_count = subscribers
+        existing.avg_views_per_post = avg_views
+        existing.posts_sampled = posts_sampled
     else:
         db.add(ChannelStat(
             channel_id=ch.id,
             date=today,
             subscribers_count=subscribers,
-            avg_views_per_post=None,
+            avg_views_per_post=avg_views,
+            posts_sampled=posts_sampled,
         ))
     db.commit()
 
     log_action(db, current_user, "update", "channel", ch.id,
-               f"Синхронизация Max.ru: {subscribers} подписчиков, {avg_views} ср. просмотров")
+               f"Синхронизация Max.ru: {subscribers} подписчиков, {avg_views} ср. просмотров ({posts_sampled} постов)")
 
-    return SyncResult(subscribers=subscribers, avg_views=avg_views, synced_at=datetime.now())
+    return SyncResult(
+        subscribers=subscribers,
+        avg_views=avg_views,
+        posts_sampled=posts_sampled,
+        posts_total=posts_total,
+        synced_at=datetime.now(),
+    )
 
 
 @router.post("/{channel_id}/stats", response_model=ChannelStatResponse, status_code=201)

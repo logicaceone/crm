@@ -35,5 +35,6 @@ class ChannelStat(Base):
     date = Column(Date, nullable=False)
     subscribers_count = Column(Integer, nullable=True)
     avg_views_per_post = Column(Integer, nullable=True)
+    posts_sampled = Column(Integer, nullable=True)  # how many posts avg_views was computed from
 
     channel = relationship("Channel", back_populates="stats")
