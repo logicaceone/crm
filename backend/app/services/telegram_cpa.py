@@ -1,9 +1,74 @@
+import logging
 import httpx
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramCPAError(Exception):
     pass
+
+
+class TelegramWebhookConflict(RuntimeError):
+    """Raised when a webhook is active on the bot token.
+
+    After the switch to per-link getChatInviteLink the CPA sync itself
+    no longer collides with a webhook, but having one set still
+    signals a likely misconfiguration that may break other bot flows.
+    """
+
+
+async def check_webhook_conflict(bot_token: str) -> Optional[str]:
+    """Check whether the bot token has an active webhook.
+
+    Returns the webhook URL if one is configured (and logs an error).
+    Returns None if no webhook is set.
+    Raises TelegramWebhookConflict if a webhook URL is present — caller
+    decides whether to abort.
+    """
+    if not bot_token:
+        return None
+    url = f"https://api.telegram.org/bot{bot_token}/getWebhookInfo"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url)
+    data = r.json()
+    if not data.get("ok"):
+        logger.warning(
+            "Telegram getWebhookInfo failed: %s",
+            data.get("description", "unknown error"),
+        )
+        return None
+    webhook_url = (data.get("result") or {}).get("url") or ""
+    if webhook_url:
+        logger.error(
+            "TELEGRAM CPA WARNING: Webhook is active → %s. "
+            "getUpdates would return 409 Conflict. "
+            "Remove webhook via POST /api/settings/telegram/delete-webhook "
+            "or directly via the Telegram Bot API deleteWebhook.",
+            webhook_url,
+        )
+        raise TelegramWebhookConflict(
+            f"Telegram webhook conflict detected ({webhook_url})."
+        )
+    return None
+
+
+async def delete_webhook(bot_token: str) -> dict:
+    """Delete any active webhook on the bot token.
+
+    Returns the raw Telegram API response.
+    """
+    if not bot_token:
+        raise TelegramCPAError("Bot token не задан")
+    url = f"https://api.telegram.org/bot{bot_token}/deleteWebhook"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(url, json={"drop_pending_updates": True})
+    data = r.json()
+    if not data.get("ok"):
+        raise TelegramCPAError(
+            f"Telegram API: {data.get('description', 'unknown error')}"
+        )
+    return data
 
 
 def _extract_username(tg_link: str) -> Optional[str]:

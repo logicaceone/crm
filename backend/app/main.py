@@ -45,10 +45,33 @@ def _check_admin_exists() -> None:
         db.close()
 
 
+async def _check_telegram_webhook() -> None:
+    """Warn (don't crash) if a webhook is active on the configured bot token."""
+    from .database import SessionLocal
+    from .db_settings import get_setting
+    from .services.telegram_cpa import check_webhook_conflict, TelegramWebhookConflict
+
+    db = SessionLocal()
+    try:
+        token = get_setting(db, "telegram_bot_token", settings.telegram_bot_token)
+    finally:
+        db.close()
+    if not token:
+        return
+    try:
+        await check_webhook_conflict(token)
+    except TelegramWebhookConflict:
+        # Already logged inside the service; do not abort startup.
+        pass
+    except Exception as e:
+        logger.warning("Telegram webhook check failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _run_migrations()
     _check_admin_exists()
+    await _check_telegram_webhook()
     start_scheduler()
     yield
     stop_scheduler()
