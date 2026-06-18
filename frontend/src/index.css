@@ -368,6 +368,34 @@ tr:hover td {
   max-width: 100%;
 }
 
+/* iOS Safari ships a high-specificity stylesheet for input[type="date"] that
+ * overrides ordinary width rules — without !important the override silently
+ * loses and the field renders wider than its modal column. */
+input[type="date"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+}
+
+/* Generic form-field wrapper (used in spec; safe no-op if unused) */
+.form-field {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Modal scroll container — block any horizontal overflow on iOS.
+ * Covers both our existing .modal-form-body and a spec-style .modal-body. */
+.modal-body,
+.modal-form-body {
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
 /* ── Filters bar ──────────────────────────────────────────────────────────  */
 @media (max-width: 767px) {
   .filters-bar {
