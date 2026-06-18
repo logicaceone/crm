@@ -25,6 +25,7 @@ interface TopChannel {
 
 interface RecentPurchase {
   id: number
+  type: 'ad' | 'target'
   date: string
   channel_name: string
   price: number

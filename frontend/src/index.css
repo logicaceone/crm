@@ -3,6 +3,10 @@
 }
 
 :root {
+  --build-version: "2026-06-18-2";
+}
+
+:root {
   --bg:        #F5F4F0;
   --surface:   #FEFEFE;
   --text:      #2C2B28;

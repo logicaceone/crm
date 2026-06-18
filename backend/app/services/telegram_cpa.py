@@ -41,67 +41,19 @@ class TelegramCPAService:
             raise TelegramCPAError(f"Telegram API: {data.get('description', 'unknown error')}")
         return data["result"]["invite_link"]
 
-    async def fetch_member_events(
-        self, offset: Optional[int]
-    ) -> tuple[list[dict], list[dict], Optional[int]]:
+    async def get_invite_link_member_count(self, chat_id: str, invite_link: str) -> int:
+        """Return number of members who joined via the given invite link.
+
+        Calls Telegram getChatInviteLink — per-link query, no offset state,
+        no race conditions across parallel calls.
         """
-        Fetch all new chat_member events since `offset`.
-
-        Returns:
-          join_events  — list of {"user_id", "chat_id", "invite_link"}
-          leave_events — list of {"user_id", "chat_id"}
-          new_offset   — int or None
-        """
-        join_events: list[dict] = []
-        leave_events: list[dict] = []
-        new_offset = offset
-
-        while True:
-            params: dict = {
-                "allowed_updates": ["chat_member"],
-                "limit": 100,
-            }
-            if new_offset is not None:
-                params["offset"] = new_offset
-
-            async with httpx.AsyncClient(timeout=30) as client:
-                r = await client.post(self._url("getUpdates"), json=params)
-
-            data = r.json()
-            if not data.get("ok"):
-                raise TelegramCPAError(f"Telegram API: {data.get('description', 'unknown error')}")
-
-            updates = data.get("result", [])
-            if not updates:
-                break
-
-            for update in updates:
-                new_offset = update["update_id"] + 1
-                cm = update.get("chat_member")
-                if not cm:
-                    continue
-
-                chat_id: int = (cm.get("chat") or {}).get("id", 0)
-                user_id: int = ((cm.get("new_chat_member") or {}).get("user") or {}).get("id", 0)
-                if not chat_id or not user_id:
-                    continue
-
-                old_status = (cm.get("old_chat_member") or {}).get("status", "")
-                new_status = (cm.get("new_chat_member") or {}).get("status", "")
-
-                # Join: was outside, now inside
-                if old_status in ("left", "kicked") and new_status in ("member", "administrator", "restricted"):
-                    link_info = cm.get("invite_link") or {}
-                    invite_link = link_info.get("invite_link")
-                    if invite_link:
-                        join_events.append({
-                            "user_id": user_id,
-                            "chat_id": chat_id,
-                            "invite_link": invite_link,
-                        })
-
-                # Leave: was inside, now outside
-                elif old_status in ("member", "administrator", "restricted") and new_status in ("left", "kicked"):
-                    leave_events.append({"user_id": user_id, "chat_id": chat_id})
-
-        return join_events, leave_events, new_offset
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                self._url("getChatInviteLink"),
+                json={"chat_id": chat_id, "invite_link": invite_link},
+            )
+        data = r.json()
+        if not data.get("ok"):
+            raise TelegramCPAError(f"Telegram API: {data.get('description', 'unknown error')}")
+        result = data.get("result") or {}
+        return int(result.get("member_count", 0))

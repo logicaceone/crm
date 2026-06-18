@@ -1,15 +1,17 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
-import bcrypt
 
 from .config import settings
 from .database import SessionLocal
 from .models.user import User, UserRole
 from .models.cpa_member import CpaMember  # noqa: F401 — ensures table is in metadata for migrations
 from .routers import auth, users, channels
+
+logger = logging.getLogger(__name__)
 from .routers.purchases import router as purchases_router, router_ext as ext_channels_router
 from .routers.sales import router as sales_router
 from .routers.budget import router as budget_router
@@ -25,22 +27,20 @@ def _run_migrations() -> None:
     alembic_command.upgrade(cfg, "head")
 
 
-def _seed_admin() -> None:
+def _check_admin_exists() -> None:
+    """Non-destructive check: warn if no root user exists.
+
+    No user is created or modified here. Create a root user manually via
+    psql or a one-off script if this warning appears.
+    """
     db = SessionLocal()
     try:
-        if db.query(User).filter(User.role == UserRole.root).first():
-            return
-        existing = db.query(User).filter(User.username == "admin").first()
-        if existing:
-            existing.role = UserRole.root
-            db.commit()
-            return
-        db.add(User(
-            username="admin",
-            password_hash=bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode(),
-            role=UserRole.root,
-        ))
-        db.commit()
+        count = db.query(User).filter(User.role == UserRole.root).count()
+        if count == 0:
+            logger.warning(
+                "WARNING: No root users found in database. "
+                "Create one manually via psql or a seed script."
+            )
     finally:
         db.close()
 
@@ -48,7 +48,7 @@ def _seed_admin() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _run_migrations()
-    _seed_admin()
+    _check_admin_exists()
     start_scheduler()
     yield
     stop_scheduler()

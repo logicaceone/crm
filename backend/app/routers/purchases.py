@@ -261,80 +261,40 @@ async def sync_cpa(
         raise HTTPException(status_code=400, detail="Канал не привязан к закупке")
 
     ch = db.query(Channel).filter(Channel.id == p.channel_id).first()
-    platform = ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform) if ch else "telegram"
-
+    if not ch:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    platform = ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform)
     if platform != "telegram":
         raise HTTPException(status_code=400, detail="Автосинхронизация CPA доступна только для Telegram")
+    if not ch.tg_link:
+        raise HTTPException(status_code=400, detail="У канала не задана TG-ссылка")
 
-    from ..db_settings import get_setting, set_setting
+    from ..db_settings import get_setting
     from ..config import settings as cfg
     bot_token = get_setting(db, "telegram_bot_token", cfg.telegram_bot_token)
     if not bot_token:
         raise HTTPException(status_code=400, detail="Telegram Bot Token не задан в настройках")
 
-    from ..services.telegram_cpa import TelegramCPAService, TelegramCPAError
-    from ..models.cpa_member import CpaMember
+    from ..services.telegram_cpa import TelegramCPAService, TelegramCPAError, _extract_username
+
+    username = _extract_username(ch.tg_link)
+    if not username:
+        raise HTTPException(status_code=400, detail="Не удалось определить username канала")
+    chat_id = f"@{username}"
 
     svc = TelegramCPAService(bot_token)
-
-    offset_str = get_setting(db, "telegram_cpa_offset", None)
-    offset = int(offset_str) if offset_str else None
-
     try:
-        join_events, leave_events, new_offset = await svc.fetch_member_events(offset)
+        member_count = await svc.get_invite_link_member_count(chat_id, p.invite_link)
     except TelegramCPAError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    if new_offset is not None:
-        set_setting(db, "telegram_cpa_offset", str(new_offset))
-
-    all_purchases = (
-        db.query(AdPurchase).filter(AdPurchase.invite_link.isnot(None)).all()
-    )
-    link_to_purchase: dict[str, AdPurchase] = {
-        pur.invite_link: pur for pur in all_purchases if pur.invite_link
-    }
-
-    now = datetime.now(timezone.utc)
-
-    for ev in join_events:
-        pur = link_to_purchase.get(ev["invite_link"])
-        if not pur:
-            continue
-        pur.joined_count += 1
-        pur.cpa_synced_at = now
-        existing = (
-            db.query(CpaMember)
-            .filter(CpaMember.user_id == ev["user_id"], CpaMember.chat_id == ev["chat_id"])
-            .first()
-        )
-        if not existing:
-            db.add(CpaMember(
-                user_id=ev["user_id"],
-                chat_id=ev["chat_id"],
-                purchase_id=pur.id,
-            ))
-
-    for ev in leave_events:
-        member = (
-            db.query(CpaMember)
-            .filter(CpaMember.user_id == ev["user_id"], CpaMember.chat_id == ev["chat_id"])
-            .first()
-        )
-        if not member:
-            continue
-        pur = db.query(AdPurchase).filter(AdPurchase.id == member.purchase_id).first()
-        if pur:
-            pur.left_count += 1
-            pur.cpa_synced_at = now
-        db.delete(member)
-
-    p.cpa_synced_at = now
+    p.joined_count = member_count
+    p.cpa_synced_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(p)
 
     log_action(db, current_user, "update", "purchase", p.id,
-               f"CPA синхронизация: {p.joined_count} вступило, {p.left_count} отписалось")
+               f"CPA: {p.joined_count} вступило по инвайт-ссылке")
     return CpaSyncResponse(
         joined_count=p.joined_count,
         left_count=p.left_count,

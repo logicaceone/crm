@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -19,13 +19,19 @@ from ..schemas.channels import (
 from .auth import get_current_user, require_roles
 from ..activity import log_action
 from ..config import settings
+from ..utils.stats import get_latest_snapshot, get_baseline_30d_ago
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
 
 def _update_left_count(db: Session, channel_id: int) -> None:
-    """Distribute subscriber loss between last two snapshots as left_count increment
-    across all purchases for this channel that have joined_count > 0."""
+    """Distribute subscriber loss between last two snapshots equally across
+    active purchases (joined_count > 0).
+
+    Per-purchase left_count is always an approximation — Telegram does not
+    report which invite link a user left from. Equal distribution is the
+    least misleading approach; the integer remainder is discarded.
+    """
     last_two = (
         db.query(ChannelStat)
         .filter(ChannelStat.channel_id == channel_id, ChannelStat.subscribers_count.isnot(None))
@@ -45,21 +51,17 @@ def _update_left_count(db: Session, channel_id: int) -> None:
         .filter(AdPurchase.channel_id == channel_id, AdPurchase.joined_count > 0)
         .all()
     )
+    if not purchases:
+        return
+    loss_per_purchase = loss // len(purchases)
+    if loss_per_purchase == 0:
+        return
     for p in purchases:
-        p.left_count += loss
+        p.left_count += loss_per_purchase
 
 read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, UserRole.viewer])
 write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
 
-
-
-def _last_subscriber_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:
-    return (
-        db.query(ChannelStat)
-        .filter(ChannelStat.channel_id == channel_id, ChannelStat.subscribers_count.isnot(None))
-        .order_by(ChannelStat.date.desc())
-        .first()
-    )
 
 
 def _last_views_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:
@@ -69,38 +71,6 @@ def _last_views_stat(db: Session, channel_id: int) -> Optional[ChannelStat]:
         .order_by(ChannelStat.date.desc())
         .first()
     )
-
-
-def _subscriber_stat_near_date(db: Session, channel_id: int, target: date) -> Optional[ChannelStat]:
-    after = (
-        db.query(ChannelStat)
-        .filter(
-            ChannelStat.channel_id == channel_id,
-            ChannelStat.subscribers_count.isnot(None),
-            ChannelStat.date >= target,
-        )
-        .order_by(ChannelStat.date.asc())
-        .first()
-    )
-    before = (
-        db.query(ChannelStat)
-        .filter(
-            ChannelStat.channel_id == channel_id,
-            ChannelStat.subscribers_count.isnot(None),
-            ChannelStat.date < target,
-        )
-        .order_by(ChannelStat.date.desc())
-        .first()
-    )
-    if not after and not before:
-        return None
-    if not after:
-        return before
-    if not before:
-        return after
-    if abs((after.date - target).days) <= abs((before.date - target).days):
-        return after
-    return before
 
 
 def _channel_response(ch: Channel) -> ChannelResponse:
@@ -118,14 +88,14 @@ def _channel_response(ch: Channel) -> ChannelResponse:
 
 
 def _build_channel_with_stats(db: Session, ch: Channel) -> ChannelWithStats:
-    last_sub = _last_subscriber_stat(db, ch.id)
+    all_subs = (
+        db.query(ChannelStat)
+        .filter(ChannelStat.channel_id == ch.id, ChannelStat.subscribers_count.isnot(None))
+        .all()
+    )
+    last_sub = get_latest_snapshot(all_subs)
+    ago = get_baseline_30d_ago(all_subs)
     last_views = _last_views_stat(db, ch.id)
-    ago = None
-    if last_sub:
-        target = last_sub.date - timedelta(days=30)
-        candidate = _subscriber_stat_near_date(db, ch.id, target)
-        if candidate and candidate.id != last_sub.id:
-            ago = candidate
     base = _channel_response(ch)
     return ChannelWithStats(
         **base.model_dump(),

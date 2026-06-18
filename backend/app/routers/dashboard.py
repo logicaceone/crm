@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
@@ -10,6 +10,7 @@ from ..models.purchase import AdPurchase, PurchaseStatus
 from ..models.sale import AdSale, SaleStatus
 from ..routers.auth import get_current_user
 from ..models.user import User
+from ..utils.stats import get_latest_snapshot, get_baseline_30d_ago, get_growth_30d
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -74,49 +75,32 @@ def dashboard_top_channels(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    today = date.today()
-    ago_30 = today - timedelta(days=30)
-
     channels = db.query(Channel).all()
     result = []
 
     for ch in channels:
-        # latest stat with subscriber count (bot records)
-        latest = (
+        snapshots = (
             db.query(ChannelStat)
             .filter(
                 ChannelStat.channel_id == ch.id,
-                ChannelStat.date <= today,
                 ChannelStat.subscribers_count.isnot(None),
             )
-            .order_by(ChannelStat.date.desc())
-            .first()
+            .all()
         )
+        latest = get_latest_snapshot(snapshots)
         if not latest:
             continue
 
-        # closest stat to 30 days ago
-        ago_stat = (
-            db.query(ChannelStat)
-            .filter(
-                ChannelStat.channel_id == ch.id,
-                ChannelStat.date <= ago_30,
-                ChannelStat.subscribers_count.isnot(None),
-            )
-            .order_by(ChannelStat.date.desc())
-            .first()
-        )
-
-        current = latest.subscribers_count
-        previous = ago_stat.subscribers_count if ago_stat else current
-        growth = current - previous
+        baseline = get_baseline_30d_ago(snapshots)
+        previous = baseline.subscribers_count if baseline else latest.subscribers_count
+        growth = get_growth_30d(snapshots) or 0
         growth_pct = (growth / previous * 100) if previous else 0.0
 
         result.append({
             "id": ch.id,
             "name": ch.name,
             "tg_link": ch.tg_link,
-            "subscribers_current": current,
+            "subscribers_current": latest.subscribers_count,
             "subscribers_30d_ago": previous,
             "growth": growth,
             "growth_pct": round(growth_pct, 2),
@@ -140,8 +124,9 @@ def dashboard_recent_purchases(
     return [
         {
             "id": r.id,
+            "type": r.type.value if hasattr(r.type, "value") else str(r.type),
             "date": str(r.date),
-            "channel_name": r.external_channel.name,
+            "channel_name": r.external_channel.name if r.external_channel else (r.target_platform or "—"),
             "price": r.price,
             "currency": r.currency,
             "status": r.status.value,
