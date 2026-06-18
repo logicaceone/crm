@@ -105,6 +105,29 @@ def _build_channel_with_stats(db: Session, ch: Channel) -> ChannelWithStats:
     )
 
 
+@router.get("/all")
+def list_channels_all(
+    db: Session = Depends(get_db),
+    _: User = Depends(read_access),
+):
+    """Lightweight unpaginated list for dropdowns.
+
+    Returns id/name/platform only — no snapshot joins, no
+    pagination. Use this everywhere a dropdown needs to show every
+    channel; reserve the main `GET /channels` for the Channels
+    table.
+    """
+    channels = db.query(Channel).order_by(Channel.created_at).all()
+    return [
+        {
+            "id": ch.id,
+            "name": ch.name,
+            "platform": ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform),
+        }
+        for ch in channels
+    ]
+
+
 @router.get("")
 def list_channels(
     page: Optional[int] = None,

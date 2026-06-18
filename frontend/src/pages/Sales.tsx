@@ -15,6 +15,7 @@ const PER_PAGE = 15
 interface Channel {
   id: number
   name: string
+  platform?: 'telegram' | 'max'
 }
 
 interface Sale {
@@ -141,7 +142,7 @@ export function Sales() {
   }, [filters, page])
 
   async function loadChannels() {
-    const res = await apiFetch('/api/channels')
+    const res = await apiFetch('/api/channels/all')
     if (res.ok) setChannels(await res.json())
   }
 
@@ -316,7 +317,9 @@ export function Sales() {
         >
           <option value="">Все каналы</option>
           {channels.map(ch => (
-            <option key={ch.id} value={ch.id}>{ch.name}</option>
+            <option key={ch.id} value={ch.id}>
+              {ch.platform ? `[${ch.platform === 'telegram' ? 'TG' : 'MAX'}] ` : ''}{ch.name}
+            </option>
           ))}
         </select>
 
@@ -488,7 +491,9 @@ function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit
             >
               <option value="">— выберите —</option>
               {channels.map(ch => (
-                <option key={ch.id} value={ch.id}>{ch.name}</option>
+                <option key={ch.id} value={ch.id}>
+                  {ch.platform ? `[${ch.platform === 'telegram' ? 'TG' : 'MAX'}] ` : ''}{ch.name}
+                </option>
               ))}
             </select>
           </label>

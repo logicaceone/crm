@@ -85,7 +85,7 @@ export function Budget() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    apiFetch('/api/channels').then(r => r.ok ? r.json() : []).then(setChannels)
+    apiFetch('/api/channels/all').then(r => r.ok ? r.json() : []).then(setChannels)
   }, [])
 
   useEffect(() => {

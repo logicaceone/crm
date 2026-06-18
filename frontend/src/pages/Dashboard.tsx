@@ -146,7 +146,7 @@ export function Dashboard() {
       apiFetch('/api/dashboard/top-channels'),
       apiFetch('/api/dashboard/recent-purchases'),
       apiFetch('/api/dashboard/recent-sales'),
-      apiFetch('/api/channels'),
+      apiFetch('/api/channels/all'),
     ])
     if (topRes.ok) setTopChannels(await topRes.json())
     if (purchRes.ok) setRecentPurchases(await purchRes.json())

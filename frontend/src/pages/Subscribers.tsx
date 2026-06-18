@@ -83,7 +83,7 @@ export function Subscribers() {
 
   // load channel list once
   useEffect(() => {
-    apiFetch('/api/channels').then(async res => {
+    apiFetch('/api/channels/all').then(async res => {
       if (res.ok) {
         const data: ChannelOption[] = await res.json()
         setChannels(data)

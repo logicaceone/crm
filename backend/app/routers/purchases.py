@@ -37,6 +37,19 @@ def list_external_channels(
     return db.query(ExternalChannel).order_by(ExternalChannel.name).all()
 
 
+@router_ext.get("/all")
+def list_external_channels_all(
+    db: Session = Depends(get_db),
+    _: User = Depends(read_access),
+):
+    """Lightweight unpaginated list for dropdowns (id/name/tg_link)."""
+    rows = db.query(ExternalChannel).order_by(ExternalChannel.name).all()
+    return [
+        {"id": ch.id, "name": ch.name, "tg_link": ch.tg_link}
+        for ch in rows
+    ]
+
+
 @router_ext.post("", response_model=ExternalChannelResponse, status_code=201)
 def create_external_channel(
     data: CreateExternalChannelRequest,

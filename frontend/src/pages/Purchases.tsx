@@ -195,12 +195,12 @@ export function Purchases() {
   }, [filters, page])
 
   async function loadExtChannels() {
-    const res = await apiFetch('/api/external-channels')
+    const res = await apiFetch('/api/external-channels/all')
     if (res.ok) setExtChannels(await res.json())
   }
 
   async function loadIntChannels() {
-    const res = await apiFetch('/api/channels')
+    const res = await apiFetch('/api/channels/all')
     if (res.ok) setIntChannels(await res.json())
   }
 
