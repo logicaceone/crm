@@ -170,13 +170,15 @@ def update_channel(
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
 
+    # `exclude_unset=True` keeps only fields the client actually sent,
+    # so explicit null (clear) and missing (no change) stay distinguishable.
     updates = data.model_dump(exclude_unset=True)
     for field, value in updates.items():
         if field == "platform":
             ch.platform = ChannelPlatform(value) if value else ch.platform
-        elif field == "max_bot_token":
-            if value:
-                ch.max_bot_token = value
+        elif field in ("max_bot_token", "max_chat_link", "tg_link", "description"):
+            # Empty string and null both mean "clear the field".
+            setattr(ch, field, value or None)
         elif field == "max_chat_id":
             ch.max_chat_id = value  # allow explicit set/clear
         else:
