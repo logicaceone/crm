@@ -13,6 +13,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 SESSION_COOKIE = "session"
 SESSION_MAX_AGE = 7 * 24 * 3600  # 7 days
 
+# Cookie attributes used at both set_cookie and delete_cookie time.
+# Browsers only honour the deletion when path/samesite match the original
+# set — mismatched attributes leave the cookie in place and the user stays
+# logged in.
+_COOKIE_PATH = "/"
+_COOKIE_SAMESITE = "lax"
+_COOKIE_SECURE = False  # flip to True for HTTPS-only deployments
+
 
 def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(settings.secret_key)
@@ -53,14 +61,25 @@ def login(data: LoginRequest, response: Response, db: Session = Depends(get_db))
         value=token,
         httponly=True,
         max_age=SESSION_MAX_AGE,
-        samesite="lax",
+        path=_COOKIE_PATH,
+        samesite=_COOKIE_SAMESITE,
+        secure=_COOKIE_SECURE,
     )
     return UserResponse.model_validate(user)
 
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie(key=SESSION_COOKIE)
+    # The session token is stateless (signed via itsdangerous), so there is
+    # no server-side store to clear — deleting the browser cookie is what
+    # severs the session. Attributes must match the original set_cookie call
+    # for the browser to accept the deletion.
+    response.delete_cookie(
+        key=SESSION_COOKIE,
+        path=_COOKIE_PATH,
+        samesite=_COOKIE_SAMESITE,
+        secure=_COOKIE_SECURE,
+    )
     return {"message": "Logged out"}
 
 

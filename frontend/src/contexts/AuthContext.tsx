@@ -62,8 +62,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    } catch {
+      // Even if the network call fails, drop the local user state and
+      // redirect — the cookie may or may not be cleared, but the SPA
+      // should not continue showing authenticated content.
+    }
     setUser(null)
+    navigate('/login', { replace: true })
   }
 
   return (
