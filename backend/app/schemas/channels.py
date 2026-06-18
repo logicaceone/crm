@@ -45,6 +45,7 @@ class CreateChannelRequest(BaseModel):
     platform: str = "telegram"
     tg_link: Optional[str] = None
     description: Optional[str] = None
+    max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None
     max_bot_token: Optional[str] = None
 
@@ -54,8 +55,9 @@ class UpdateChannelRequest(BaseModel):
     platform: Optional[str] = None
     tg_link: Optional[str] = None
     description: Optional[str] = None
+    max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None
-    max_bot_token: Optional[str] = None  # plaintext; backend encrypts before storing
+    max_bot_token: Optional[str] = None
 
 
 class CreateStatRequest(BaseModel):

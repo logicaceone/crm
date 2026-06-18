@@ -14,6 +14,8 @@ import { Sales } from './pages/Sales'
 import { Budget } from './pages/Budget'
 import { Users } from './pages/Users'
 import { Activity } from './pages/Activity'
+import { Settings } from './pages/Settings'
+import { Subscribers } from './pages/Subscribers'
 
 export default function App() {
   return (
@@ -35,6 +37,14 @@ export default function App() {
               element={
                 <RoleRoute allowedRoles={['root', 'admin', 'manager', 'viewer']}>
                   <Dashboard />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/subscribers"
+              element={
+                <RoleRoute allowedRoles={['root', 'admin', 'manager', 'viewer']}>
+                  <Subscribers />
                 </RoleRoute>
               }
             />
@@ -91,6 +101,14 @@ export default function App() {
               element={
                 <RoleRoute allowedRoles={['root', 'admin']}>
                   <Activity />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <RoleRoute allowedRoles={['root']}>
+                  <Settings />
                 </RoleRoute>
               }
             />

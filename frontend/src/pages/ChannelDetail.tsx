@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { apiFetch } from '../lib/api'
+import { Modal } from '../components/Modal'
 
 interface ChannelStat {
   id: number
@@ -348,44 +349,38 @@ export function ChannelDetail() {
       )}
 
       {showAdd && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Снапшот просмотров</h2>
-              <button onClick={() => setShowAdd(false)} style={closeBtnStyle}>×</button>
+        <Modal title="Снапшот просмотров" onClose={() => setShowAdd(false)}>
+          <form onSubmit={handleAdd} style={formStyle}>
+            {formError && <div style={{ color: '#dc2626', fontSize: 14 }}>{formError}</div>}
+            <label style={labelStyle}>
+              Дата
+              <input
+                type="date"
+                value={form.date}
+                onChange={e => setForm(p => ({ ...p, date: e.target.value }))}
+                required
+                autoFocus
+              />
+            </label>
+            <label style={labelStyle}>
+              Ср. просмотры на пост
+              <input
+                type="number"
+                min={0}
+                placeholder="0"
+                value={form.avg_views_per_post}
+                onChange={e => setForm(p => ({ ...p, avg_views_per_post: e.target.value }))}
+                required
+              />
+            </label>
+            <div className="modal-footer">
+              <button type="button" onClick={() => setShowAdd(false)}>Отмена</button>
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Сохранение…' : 'Сохранить'}
+              </button>
             </div>
-            <form onSubmit={handleAdd} style={formStyle}>
-              {formError && <div style={{ color: '#dc2626', fontSize: 14 }}>{formError}</div>}
-              <label style={labelStyle}>
-                Дата
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={e => setForm(p => ({ ...p, date: e.target.value }))}
-                  required
-                  autoFocus
-                />
-              </label>
-              <label style={labelStyle}>
-                Ср. просмотры на пост
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="0"
-                  value={form.avg_views_per_post}
-                  onChange={e => setForm(p => ({ ...p, avg_views_per_post: e.target.value }))}
-                  required
-                />
-              </label>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                <button type="button" onClick={() => setShowAdd(false)}>Отмена</button>
-                <button type="submit" disabled={submitting}>
-                  {submitting ? 'Сохранение…' : 'Сохранить'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
     </div>
   )
@@ -485,33 +480,6 @@ const tdStyle: CSSProperties = {
   padding: '8px 14px',
   borderBottom: '1px solid #E8DDD3',
   fontSize: 13,
-}
-
-const overlayStyle: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(44,43,40,0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 100,
-}
-
-const modalStyle: CSSProperties = {
-  background: '#FEFEFE',
-  borderRadius: 10,
-  padding: 24,
-  width: 380,
-  boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
-}
-
-const closeBtnStyle: CSSProperties = {
-  background: 'none',
-  border: 'none',
-  fontSize: 22,
-  cursor: 'pointer',
-  lineHeight: 1,
-  padding: 0,
 }
 
 const formStyle: CSSProperties = {

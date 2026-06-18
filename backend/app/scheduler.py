@@ -28,11 +28,15 @@ def _extract_tg_username(tg_link: str) -> str | None:
 
 
 async def sync_subscriber_counts() -> None:
-    if not settings.telegram_bot_token:
+    from .db_settings import get_setting
+
+    db = SessionLocal()
+    bot_token = get_setting(db, "telegram_bot_token", settings.telegram_bot_token)
+    if not bot_token:
+        db.close()
         logger.warning("TELEGRAM_BOT_TOKEN not set, skipping TG subscriber sync")
         return
 
-    db = SessionLocal()
     today = date.today()
     synced = 0
     failed = 0
@@ -49,7 +53,7 @@ async def sync_subscriber_counts() -> None:
                     continue
                 try:
                     r = await client.get(
-                        f"https://api.telegram.org/bot{settings.telegram_bot_token}/getChatMemberCount",
+                        f"https://api.telegram.org/bot{bot_token}/getChatMemberCount",
                         params={"chat_id": f"@{username}"},
                     )
                     data = r.json()

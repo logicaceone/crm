@@ -1,5 +1,5 @@
-import { CSSProperties } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef, CSSProperties } from 'react'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth, Role } from '../contexts/AuthContext'
 
 interface MenuItem {
@@ -10,17 +10,36 @@ interface MenuItem {
 
 const MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Дашборд', roles: ['root', 'admin', 'manager', 'viewer'] },
+  { to: '/subscribers', label: 'Подписчики', roles: ['root', 'admin', 'manager', 'viewer'] },
   { to: '/channels', label: 'Каналы', roles: ['root', 'admin', 'manager'] },
   { to: '/purchases', label: 'Закупки', roles: ['root', 'admin', 'manager'] },
   { to: '/sales', label: 'Продажи', roles: ['root', 'admin', 'manager'] },
   { to: '/budget', label: 'Бюджет', roles: ['root', 'admin', 'manager'] },
   { to: '/users', label: 'Пользователи', roles: ['root', 'admin'] },
   { to: '/activity', label: 'Действия', roles: ['root', 'admin'] },
+  { to: '/settings', label: 'Настройки', roles: ['root'] },
 ]
 
 export function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [navState, setNavState] = useState<'idle' | 'active' | 'done'>('idle')
+  const prevPath = useRef(location.pathname)
+  const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (prevPath.current === location.pathname) return
+    prevPath.current = location.pathname
+    if (doneTimer.current) clearTimeout(doneTimer.current)
+    setNavState('active')
+    doneTimer.current = setTimeout(() => {
+      setNavState('done')
+      setTimeout(() => setNavState('idle'), 220)
+    }, 700)
+    return () => { if (doneTimer.current) clearTimeout(doneTimer.current) }
+  }, [location.pathname])
 
   if (!user) return null
 
@@ -31,15 +50,27 @@ export function Layout() {
     navigate('/login', { replace: true })
   }
 
+  function closeDrawer() {
+    setDrawerOpen(false)
+  }
+
   return (
     <div style={shellStyle}>
-      <aside style={sidebarStyle}>
+      {/* Sidebar drawer backdrop */}
+      <div
+        className={`sidebar-overlay${drawerOpen ? ' open' : ''}`}
+        onClick={closeDrawer}
+      />
+
+      {/* Sidebar */}
+      <aside style={sidebarStyle} className={`sidebar-drawer${drawerOpen ? ' open' : ''}`}>
         <div style={brandStyle}>CRM TG</div>
         <nav style={navStyle}>
           {items.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={closeDrawer}
               style={({ isActive }) => ({
                 ...linkStyle,
                 background: isActive ? '#3D3A35' : 'transparent',
@@ -56,9 +87,22 @@ export function Layout() {
           <button onClick={handleLogout} style={logoutBtnStyle}>Выйти</button>
         </div>
       </aside>
-      <div style={mainStyle}>
-        <main style={contentStyle}>
-          <Outlet />
+
+      {/* Main area */}
+      <div style={mainStyle} className="layout-main">
+        {/* Mobile top bar */}
+        <div className="mobile-header">
+          <button className="burger-btn" onClick={() => setDrawerOpen(o => !o)} aria-label="Меню">
+            ☰
+          </button>
+          <span className="mobile-header-title">CRM TG</span>
+        </div>
+
+        <main style={contentStyle} className="layout-content">
+          <div className={`nav-progress${navState === 'active' ? ' active' : navState === 'done' ? ' done' : ''}`} />
+          <div key={location.pathname} className="page-enter">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
@@ -68,10 +112,7 @@ export function Layout() {
 const shellStyle: CSSProperties = {
   display: 'flex',
   minHeight: '100vh',
-  width: '100%',
-  position: 'absolute',
-  top: 0,
-  left: 0,
+  flex: 1,
 }
 
 const sidebarStyle: CSSProperties = {
@@ -137,4 +178,5 @@ const contentStyle: CSSProperties = {
   flex: 1,
   padding: 28,
   background: '#F5F4F0',
+  position: 'relative',
 }

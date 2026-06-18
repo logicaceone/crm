@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 import bcrypt
 
@@ -14,12 +15,24 @@ router = APIRouter(prefix="/users", tags=["users"])
 root_or_admin = require_roles([UserRole.root, UserRole.admin])
 
 
-@router.get("", response_model=list[UserResponse])
+@router.get("")
 def list_users(
+    page: Optional[int] = None,
+    per_page: int = Query(default=15, ge=1, le=200),
     db: Session = Depends(get_db),
     _: User = Depends(root_or_admin),
 ):
-    return db.query(User).order_by(User.created_at).all()
+    q = db.query(User).order_by(User.created_at)
+    if page is None:
+        return q.all()
+    total = q.count()
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    items = q.offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "items": [UserResponse.model_validate(u) for u in items],
+        "pagination": {"page": page, "per_page": per_page, "total": total, "total_pages": total_pages},
+    }
 
 
 @router.post("", response_model=UserResponse, status_code=201)

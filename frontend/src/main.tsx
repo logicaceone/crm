@@ -12,3 +12,25 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>
 )
+
+// Show loader for at least 600ms so styles/fonts have time to load
+const loaderStart = performance.now()
+
+function hideAppLoader() {
+  const loader = document.getElementById('app-loader')
+  if (!loader) return
+  loader.classList.add('fade-out')
+  setTimeout(() => loader.remove(), 280)
+}
+
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    const elapsed = performance.now() - loaderStart
+    const remaining = Math.max(0, 600 - elapsed)
+    if (remaining > 0) {
+      setTimeout(hideAppLoader, remaining)
+    } else {
+      hideAppLoader()
+    }
+  })
+})

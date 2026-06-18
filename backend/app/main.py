@@ -8,12 +8,15 @@ import bcrypt
 from .config import settings
 from .database import SessionLocal
 from .models.user import User, UserRole
+from .models.cpa_member import CpaMember  # noqa: F401 — ensures table is in metadata for migrations
 from .routers import auth, users, channels
 from .routers.purchases import router as purchases_router, router_ext as ext_channels_router
 from .routers.sales import router as sales_router
 from .routers.budget import router as budget_router
 from .routers.dashboard import router as dashboard_router
 from .routers.activity import router as activity_router
+from .routers.system_settings import router as system_settings_router
+from .routers.stats import router as stats_router
 from .scheduler import start_scheduler, stop_scheduler
 
 
@@ -70,6 +73,8 @@ app.include_router(sales_router)
 app.include_router(budget_router)
 app.include_router(dashboard_router)
 app.include_router(activity_router)
+app.include_router(system_settings_router)
+app.include_router(stats_router)
 
 
 @app.get("/health")

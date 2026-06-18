@@ -1,8 +1,14 @@
-import { useState, useEffect, FormEvent, CSSProperties } from 'react'
+import { useState, useEffect, useRef, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
+import { DateRangePicker } from '../components/DateRangePicker'
+import { KebabMenu } from '../components/KebabMenu'
+import { Modal } from '../components/Modal'
+import { Pagination } from '../components/Pagination'
+
+const PER_PAGE = 15
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,8 +109,13 @@ export function Sales() {
   const [sales, setSales] = useState<Sale[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [filters, setFilters] = useState<Filters>(emptyFilters)
+  const [rangeError, setRangeError] = useState<string | null>(null)
   const [clientSearch, setClientSearch] = useState('')
   const [pageError, setPageError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const tableRef = useRef<HTMLDivElement>(null)
 
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState(emptyForm)
@@ -121,9 +132,13 @@ export function Sales() {
   }, [])
 
   useEffect(() => {
+    setPage(1)
+  }, [filters])
+
+  useEffect(() => {
     loadSales()
     loadSummary()
-  }, [filters])
+  }, [filters, page])
 
   async function loadChannels() {
     const res = await apiFetch('/api/channels')
@@ -131,9 +146,22 @@ export function Sales() {
   }
 
   async function loadSales() {
-    const res = await apiFetch(`/api/sales${buildQS(filters)}`)
-    if (res.ok) setSales(await res.json())
-    else setPageError('Не удалось загрузить продажи')
+    const qs = buildQS(filters)
+    const sep = qs ? '&' : '?'
+    const res = await apiFetch(`/api/sales${qs}${sep}page=${page}&per_page=${PER_PAGE}`)
+    if (res.ok) {
+      const data = await res.json()
+      setSales(data.items)
+      setTotal(data.pagination.total)
+      setTotalPages(data.pagination.total_pages)
+    } else {
+      setPageError('Не удалось загрузить продажи')
+    }
+  }
+
+  function changePage(p: number) {
+    setPage(p)
+    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   async function loadSummary() {
@@ -172,13 +200,8 @@ export function Sales() {
         toast.error(msg)
         return
       }
-      const created: Sale = await res.json()
-      setSales(prev => [created, ...prev])
-      setSummary(prev =>
-        prev
-          ? { ...prev, total: prev.total + created.price, count: prev.count + 1 }
-          : { total: created.price, currency: created.currency, count: 1 }
-      )
+      await res.json()
+      await Promise.all([loadSales(), loadSummary()])
       setShowCreate(false)
       setCreateForm(emptyForm)
       toast.success('Продажа добавлена')
@@ -246,10 +269,7 @@ export function Sales() {
     if (!await confirm(`Удалить продажу клиенту "${s.client_name}" от ${s.date}?`)) return
     const res = await apiFetch(`/api/sales/${s.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
-      setSales(prev => prev.filter(x => x.id !== s.id))
-      setSummary(prev =>
-        prev ? { ...prev, total: prev.total - s.price, count: prev.count - 1 } : prev
-      )
+      await Promise.all([loadSales(), loadSummary()])
       toast.success('Продажа удалена')
     } else {
       toast.error('Не удалось удалить продажу')
@@ -274,7 +294,7 @@ export function Sales() {
       </div>
 
       {/* Filters */}
-      <div style={filtersRowStyle}>
+      <div style={filtersRowStyle} className="filters-bar">
         <div style={{ display: 'flex', gap: 4 }}>
           <input
             placeholder="Поиск по клиенту…"
@@ -282,6 +302,7 @@ export function Sales() {
             onChange={e => setClientSearch(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && applyClientSearch()}
             style={{ ...filterInputStyle, width: 180 }}
+            className="filter-search-input"
           />
           <button onClick={applyClientSearch} style={{ fontSize: 12, padding: '5px 10px' }}>
             Найти
@@ -311,23 +332,17 @@ export function Sales() {
           <option value="cancelled">Отменено</option>
         </select>
 
-        <input
-          type="date"
-          value={filters.from}
-          onChange={e => setFilters(p => ({ ...p, from: e.target.value }))}
-          style={filterInputStyle}
-        />
-        <span style={{ alignSelf: 'center', color: '#D4B896', fontSize: 13 }}>—</span>
-        <input
-          type="date"
-          value={filters.to}
-          onChange={e => setFilters(p => ({ ...p, to: e.target.value }))}
-          style={filterInputStyle}
+        <DateRangePicker
+          dateFrom={filters.from}
+          dateTo={filters.to}
+          onChange={(from, to) => setFilters(p => ({ ...p, from, to }))}
+          onError={setRangeError}
+          error={rangeError}
         />
 
         {hasFilters && (
           <button
-            onClick={() => { setFilters(emptyFilters); setClientSearch('') }}
+            onClick={() => { setFilters(emptyFilters); setClientSearch(''); setRangeError(null) }}
             style={{ fontSize: 12, color: '#8C7B6E', background: 'none', border: 'none', cursor: 'pointer' }}
           >
             Сбросить
@@ -336,7 +351,7 @@ export function Sales() {
       </div>
 
       {/* Table */}
-      <table style={tableStyle}>
+      <div ref={tableRef} className="table-scroll"><table style={tableStyle}>
         <thead>
           <tr>
             <th style={thStyle}>Дата</th>
@@ -373,29 +388,35 @@ export function Sales() {
                 </td>
                 <td style={{ ...tdStyle, color: '#8C7B6E' }}>{s.creator.username}</td>
                 {canWrite && (
-                  <td style={tdStyle}>
-                    <button onClick={() => openEdit(s)} style={{ marginRight: 8 }}>Редакт.</button>
-                    <button onClick={() => handleDelete(s)} style={{ background: 'transparent', color: '#dc2626', borderColor: '#dc2626' }}>Удалить</button>
+                  <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
+                    <KebabMenu actions={[
+                      { label: 'Редактировать', onClick: () => openEdit(s) },
+                      { label: 'Удалить', onClick: () => handleDelete(s), danger: true },
+                    ]} />
                   </td>
                 )}
               </tr>
             ))
           )}
         </tbody>
-        {summary !== null && sales.length > 0 && (
-          <tfoot>
-            <tr>
-              <td colSpan={4} style={{ ...tdStyle, fontWeight: 600, background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }}>
-                Итого ({summary.count} продаж)
-              </td>
-              <td style={{ ...tdStyle, fontWeight: 600, background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }}>
-                {summary.total.toLocaleString('ru-RU', { minimumFractionDigits: 0 })} {summary.currency}
-              </td>
-              <td colSpan={canWrite ? 3 : 2} style={{ background: '#F0E8DE', borderTop: '2px solid #E8DDD3' }} />
-            </tr>
-          </tfoot>
-        )}
-      </table>
+      </table></div>
+
+      <Pagination
+        page={page}
+        total_pages={totalPages}
+        total={total}
+        per_page={PER_PAGE}
+        onChange={changePage}
+      />
+
+      {summary !== null && total > 0 && (
+        <div style={summaryRowStyle}>
+          <div>Итого ({summary.count} продаж)</div>
+          <div style={{ fontWeight: 700 }}>
+            {summary.total.toLocaleString('ru-RU', { minimumFractionDigits: 0 })} {summary.currency}
+          </div>
+        </div>
+      )}
 
       {/* Create modal */}
       {showCreate && (
@@ -443,14 +464,8 @@ interface SaleModalProps {
 
 function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit, onClose }: SaleModalProps) {
   return (
-    <div style={overlayStyle}>
-      <div style={modalStyle}>
-        <div style={modalHeaderStyle}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
-          <button onClick={onClose} style={closeBtnStyle}>×</button>
-        </div>
-
-        <form onSubmit={onSubmit} style={formStyle}>
+    <Modal title={title} onClose={onClose}>
+      <form onSubmit={onSubmit} style={formStyle}>
           {error && <div style={errStyle}>{error}</div>}
 
           <label style={labelStyle}>
@@ -478,7 +493,7 @@ function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit
             </select>
           </label>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-row-2col">
             <label style={labelStyle}>
               Дата *
               <input
@@ -500,6 +515,9 @@ function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit
                 <option value="other">Другое</option>
               </select>
             </label>
+          </div>
+
+          <div className="form-row-2col">
             <label style={labelStyle}>
               Сумма *
               <input
@@ -514,11 +532,7 @@ function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit
             </label>
             <label style={labelStyle}>
               Валюта
-              <input
-                value={form.currency}
-                onChange={e => setForm(p => ({ ...p, currency: e.target.value }))}
-                maxLength={10}
-              />
+              <div className="currency-badge">₽ RUB</div>
             </label>
           </div>
 
@@ -545,15 +559,14 @@ function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit
             />
           </label>
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <div className="modal-footer">
             <button type="button" onClick={onClose}>Отмена</button>
             <button type="submit" disabled={submitting}>
               {submitting ? 'Сохранение…' : 'Сохранить'}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -563,12 +576,22 @@ const headerRowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-
 const filtersRowStyle: CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }
 const filterInputStyle: CSSProperties = { fontSize: 13, padding: '5px 8px' }
 const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', background: '#FEFEFE' }
-const thStyle: CSSProperties = { textAlign: 'left', padding: '10px 14px', borderBottom: '1px solid #E8DDD3', fontWeight: 600, fontSize: 13, background: '#F0E8DE', color: '#8C7B6E' }
+const summaryRowStyle: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+  flexWrap: 'wrap',
+  padding: '12px 16px',
+  background: '#F0E8DE',
+  border: '1px solid #E8DDD3',
+  borderRadius: 8,
+  fontSize: 13,
+  fontWeight: 600,
+  marginTop: 8,
+}
+const thStyle: CSSProperties = { textAlign: 'left', padding: '10px 14px', borderBottom: '1.5px solid #E8DDD3', fontWeight: 700, fontSize: 11, background: '#F0E8DE', color: '#8C7B6E', letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }
 const tdStyle: CSSProperties = { padding: '9px 14px', borderBottom: '1px solid #E8DDD3', fontSize: 13 }
-const overlayStyle: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(44,43,40,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }
-const modalStyle: CSSProperties = { background: '#FEFEFE', borderRadius: 10, padding: 24, width: 460, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 40px rgba(44,43,40,0.15)' }
-const modalHeaderStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
-const closeBtnStyle: CSSProperties = { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 0, color: '#8C7B6E' }
 const formStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 }
 const errStyle: CSSProperties = { color: '#dc2626', fontSize: 13 }
 const labelStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 500, color: '#2C2B28' }

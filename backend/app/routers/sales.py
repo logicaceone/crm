@@ -54,18 +54,30 @@ def sales_summary(
     return SaleSummary(total=total, currency=currency, count=len(sales))
 
 
-@router.get("", response_model=list[AdSaleResponse])
+@router.get("")
 def list_sales(
     channel_id: Optional[int] = None,
     status: Optional[SaleStatus] = None,
     client_name: Optional[str] = None,
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = None,
+    page: Optional[int] = None,
+    per_page: int = Query(default=15, ge=1, le=200),
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
     q = _apply_filters(db.query(AdSale), channel_id, status, client_name, from_, to)
-    return q.order_by(AdSale.date.desc()).all()
+    q = q.order_by(AdSale.date.desc())
+    if page is None:
+        return q.all()
+    total = q.count()
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    items = q.offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "items": [AdSaleResponse.model_validate(s) for s in items],
+        "pagination": {"page": page, "per_page": per_page, "total": total, "total_pages": total_pages},
+    }
 
 
 @router.post("", response_model=AdSaleResponse, status_code=201)
@@ -77,7 +89,9 @@ def create_sale(
     ch = db.query(Channel).filter(Channel.id == data.channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
-    sale = AdSale(**data.model_dump(), created_by=current_user.id)
+    payload = data.model_dump()
+    payload["currency"] = "RUB"
+    sale = AdSale(**payload, created_by=current_user.id)
     db.add(sale)
     db.commit()
     db.refresh(sale)
@@ -109,6 +123,8 @@ def update_sale(
     if not s:
         raise HTTPException(status_code=404, detail="Sale not found")
     for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "currency":
+            continue
         setattr(s, field, value)
     db.commit()
     db.refresh(s)

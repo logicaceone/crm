@@ -4,6 +4,13 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
+import { useRef } from 'react'
+import { KebabMenu } from '../components/KebabMenu'
+import { SkeletonTable } from '../components/PageSkeleton'
+import { Modal } from '../components/Modal'
+import { Pagination } from '../components/Pagination'
+
+const PER_PAGE = 15
 
 interface ChannelStat {
   id: number
@@ -33,6 +40,7 @@ interface ChannelForm {
   platform: 'telegram' | 'max'
   tg_link: string
   description: string
+  max_chat_id: string
   max_chat_link: string
   max_bot_token: string
 }
@@ -51,7 +59,7 @@ function growthColor(ch: Channel): string {
   return 'inherit'
 }
 
-const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', description: '', max_chat_link: '', max_bot_token: '' }
+const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', description: '', max_chat_id: '', max_chat_link: '', max_bot_token: '' }
 
 function PlatformBadge({ platform }: { platform: 'telegram' | 'max' }) {
   const isTG = platform === 'telegram'
@@ -81,6 +89,10 @@ export function Channels() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const tableRef = useRef<HTMLDivElement>(null)
 
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState<ChannelForm>(emptyForm)
@@ -94,17 +106,25 @@ export function Channels() {
 
   const [syncingId, setSyncingId] = useState<number | null>(null)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [page])
 
   async function load() {
     setLoading(true)
-    const res = await apiFetch('/api/channels')
+    const res = await apiFetch(`/api/channels?page=${page}&per_page=${PER_PAGE}`)
     if (res.ok) {
-      setChannels(await res.json())
+      const data = await res.json()
+      setChannels(data.items)
+      setTotal(data.pagination.total)
+      setTotalPages(data.pagination.total_pages)
     } else {
       setError('Не удалось загрузить каналы')
     }
     setLoading(false)
+  }
+
+  function changePage(p: number) {
+    setPage(p)
+    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   async function handleCreate(e: FormEvent) {
@@ -120,6 +140,7 @@ export function Channels() {
       if (createForm.platform === 'telegram') {
         body.tg_link = createForm.tg_link || null
       } else {
+        body.max_chat_id = createForm.max_chat_id ? Number(createForm.max_chat_id) : null
         body.max_chat_link = createForm.max_chat_link || null
         if (createForm.max_bot_token) body.max_bot_token = createForm.max_bot_token
       }
@@ -131,13 +152,8 @@ export function Channels() {
         toast.error(msg)
         return
       }
-      const created: Channel = {
-        ...(await res.json()),
-        last_subscriber_stat: null,
-        last_views_stat: null,
-        stat_30d_ago: null,
-      }
-      setChannels(prev => [...prev, created])
+      await res.json()
+      await load()
       setShowCreate(false)
       setCreateForm(emptyForm)
       toast.success('Канал добавлен')
@@ -153,8 +169,9 @@ export function Channels() {
       platform: ch.platform,
       tg_link: ch.tg_link ?? '',
       description: ch.description ?? '',
+      max_chat_id: ch.max_chat_id != null ? String(ch.max_chat_id) : '',
       max_chat_link: ch.max_chat_link ?? '',
-      max_bot_token: '',  // never prefill — user must re-enter to change
+      max_bot_token: '',
     })
     setEditError('')
   }
@@ -173,6 +190,7 @@ export function Channels() {
       if (editForm.platform === 'telegram') {
         body.tg_link = editForm.tg_link || null
       } else {
+        body.max_chat_id = editForm.max_chat_id ? Number(editForm.max_chat_id) : null
         body.max_chat_link = editForm.max_chat_link || null
         if (editForm.max_bot_token) body.max_bot_token = editForm.max_bot_token
       }
@@ -206,7 +224,7 @@ export function Channels() {
     if (!await confirm(`Удалить канал "${ch.name}"?`)) return
     const res = await apiFetch(`/api/channels/${ch.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
-      setChannels(prev => prev.filter(c => c.id !== ch.id))
+      await load()
       toast.success('Канал удалён')
     } else {
       toast.error('Не удалось удалить канал')
@@ -232,10 +250,15 @@ export function Channels() {
     }
   }
 
-  if (loading) return <p>Загрузка…</p>
+  if (loading) return (
+    <div>
+      <h1 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 700 }}>Каналы</h1>
+      <SkeletonTable rows={7} cols={5} />
+    </div>
+  )
   if (error) return <p style={{ color: 'red' }}>{error}</p>
 
-  const colCount = canWrite ? 7 : 6
+  const colCount = canWrite ? 6 : 5
 
   return (
     <div>
@@ -248,14 +271,13 @@ export function Channels() {
         )}
       </div>
 
-      <table style={tableStyle}>
+      <div ref={tableRef} className="table-scroll"><table style={tableStyle}>
         <thead>
           <tr>
             <th style={thStyle}>Платформа</th>
             <th style={thStyle}>Название</th>
             <th style={thStyle}>Ссылка</th>
             <th style={thStyle}>Подписчики</th>
-            <th style={thStyle}>Прирост 30д</th>
             <th style={thStyle}>Ср. просмотры</th>
             {canWrite && <th style={thStyle}>Действия</th>}
           </tr>
@@ -292,36 +314,32 @@ export function Channels() {
               <td style={tdStyle}>
                 {ch.last_subscriber_stat?.subscribers_count?.toLocaleString() ?? '—'}
               </td>
-              <td style={{ ...tdStyle, color: growthColor(ch) }}>
-                {growth(ch)}
-              </td>
               <td style={tdStyle}>
                 {ch.last_views_stat?.avg_views_per_post?.toLocaleString() ?? '—'}
               </td>
               {canWrite && (
-                <td style={tdStyle}>
-                  <button onClick={() => openEdit(ch)} style={{ marginRight: 6 }}>Редакт.</button>
-                  {ch.platform === 'max' && ch.max_bot_token_set && (
-                    <button
-                      onClick={() => handleSync(ch)}
-                      disabled={syncingId === ch.id}
-                      style={{ marginRight: 6, background: 'transparent', color: '#0088cc', borderColor: '#0088cc44' }}
-                    >
-                      {syncingId === ch.id ? '…' : 'Синк'}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleDelete(ch)}
-                    style={{ background: 'transparent', color: '#dc2626', borderColor: '#dc262644' }}
-                  >
-                    Удалить
-                  </button>
+                <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
+                  <KebabMenu actions={[
+                    { label: 'Редактировать', onClick: () => openEdit(ch) },
+                    ...(ch.platform === 'max' && ch.max_bot_token_set
+                      ? [{ label: syncingId === ch.id ? 'Синхронизация…' : 'Синхронизировать', onClick: () => handleSync(ch), disabled: syncingId === ch.id }]
+                      : []),
+                    { label: 'Удалить', onClick: () => handleDelete(ch), danger: true },
+                  ]} />
                 </td>
               )}
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
+
+      <Pagination
+        page={page}
+        total_pages={totalPages}
+        total={total}
+        per_page={PER_PAGE}
+        onChange={changePage}
+      />
 
       {showCreate && (
         <Modal title="Добавить канал" onClose={() => setShowCreate(false)}>
@@ -412,6 +430,17 @@ function ChannelForm({ form, onChange, onSubmit, error, submitting, onCancel, su
             onChange={e => set({ max_chat_link: e.target.value })}
           />
           <label style={labelStyle}>
+            Chat ID
+            <span style={{ fontWeight: 400, color: '#8C7B6E', fontSize: 12 }}>
+              Числовой ID чата (например: -73583400620057). Найти можно в Max.ru Admin или через бота.
+            </span>
+            <input
+              placeholder="-73583400620057"
+              value={form.max_chat_id}
+              onChange={e => set({ max_chat_id: e.target.value })}
+            />
+          </label>
+          <label style={labelStyle}>
             Bot Token
             {isEdit && existingTokenSet && (
               <span style={{ fontWeight: 400, color: '#8C7B6E', marginLeft: 4 }}>(оставьте пустым чтобы не менять)</span>
@@ -435,13 +464,13 @@ function ChannelForm({ form, onChange, onSubmit, error, submitting, onCancel, su
         style={{ resize: 'vertical' }}
       />
 
-      <div style={actionsStyle}>
+      <div className="modal-footer" style={{ flexWrap: 'wrap' }}>
         {onSync && (
           <button
             type="button"
             onClick={onSync}
             disabled={syncing}
-            style={{ marginRight: 'auto', background: 'transparent', color: '#0088cc', borderColor: '#0088cc44', fontSize: 13 }}
+            style={{ flex: 'none', marginRight: 'auto', background: 'transparent', color: '#0088cc', borderColor: '#0088cc44', fontSize: 13 }}
           >
             {syncing ? 'Синхронизация…' : 'Синхронизировать'}
           </button>
@@ -455,57 +484,26 @@ function ChannelForm({ form, onChange, onSubmit, error, submitting, onCancel, su
   )
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div style={overlayStyle}>
-      <div style={modalStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>×</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
 const headerRowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
 const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse' }
 
 const thStyle: CSSProperties = {
   textAlign: 'left',
   padding: '10px 14px',
-  borderBottom: '1px solid #E8DDD3',
-  fontWeight: 600,
-  fontSize: 13,
+  borderBottom: '1.5px solid #E8DDD3',
+  fontWeight: 700,
+  fontSize: 11,
   background: '#F0E8DE',
   color: '#8C7B6E',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  whiteSpace: 'nowrap',
 }
 
 const tdStyle: CSSProperties = {
   padding: '9px 14px',
   borderBottom: '1px solid #E8DDD3',
   fontSize: 13,
-}
-
-const overlayStyle: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(44,43,40,0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 100,
-}
-
-const modalStyle: CSSProperties = {
-  background: '#FEFEFE',
-  borderRadius: 10,
-  padding: 28,
-  width: 420,
-  boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
-  maxHeight: '90vh',
-  overflowY: 'auto',
 }
 
 const formStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 }
@@ -518,12 +516,4 @@ const labelStyle: CSSProperties = {
   fontSize: 13,
   fontWeight: 500,
   color: '#2C2B28',
-}
-
-const actionsStyle: CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  justifyContent: 'flex-end',
-  marginTop: 4,
-  flexWrap: 'wrap',
 }

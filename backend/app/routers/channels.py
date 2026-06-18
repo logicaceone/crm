@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User, UserRole
 from ..models.channel import Channel, ChannelStat, ChannelPlatform
+from ..models.purchase import AdPurchase
 from ..schemas.channels import (
     ChannelResponse,
     ChannelWithStats,
@@ -20,6 +21,32 @@ from ..activity import log_action
 from ..config import settings
 
 router = APIRouter(prefix="/channels", tags=["channels"])
+
+
+def _update_left_count(db: Session, channel_id: int) -> None:
+    """Distribute subscriber loss between last two snapshots as left_count increment
+    across all purchases for this channel that have joined_count > 0."""
+    last_two = (
+        db.query(ChannelStat)
+        .filter(ChannelStat.channel_id == channel_id, ChannelStat.subscribers_count.isnot(None))
+        .order_by(ChannelStat.date.desc())
+        .limit(2)
+        .all()
+    )
+    if len(last_two) < 2:
+        return
+    current_subs = last_two[0].subscribers_count
+    prev_subs = last_two[1].subscribers_count
+    loss = max(0, prev_subs - current_subs)
+    if loss == 0:
+        return
+    purchases = (
+        db.query(AdPurchase)
+        .filter(AdPurchase.channel_id == channel_id, AdPurchase.joined_count > 0)
+        .all()
+    )
+    for p in purchases:
+        p.left_count += loss
 
 read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, UserRole.viewer])
 write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
@@ -108,13 +135,24 @@ def _build_channel_with_stats(db: Session, ch: Channel) -> ChannelWithStats:
     )
 
 
-@router.get("", response_model=list[ChannelWithStats])
+@router.get("")
 def list_channels(
+    page: Optional[int] = None,
+    per_page: int = Query(default=15, ge=1, le=200),
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
-    channels = db.query(Channel).order_by(Channel.created_at).all()
-    return [_build_channel_with_stats(db, ch) for ch in channels]
+    q = db.query(Channel).order_by(Channel.created_at)
+    if page is None:
+        return [_build_channel_with_stats(db, ch) for ch in q.all()]
+    total = q.count()
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    items = q.offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "items": [_build_channel_with_stats(db, ch) for ch in items],
+        "pagination": {"page": page, "per_page": per_page, "total": total, "total_pages": total_pages},
+    }
 
 
 @router.post("", response_model=ChannelResponse, status_code=201)
@@ -128,6 +166,7 @@ def create_channel(
         platform=ChannelPlatform(data.platform),
         tg_link=data.tg_link or None,
         description=data.description or None,
+        max_chat_id=data.max_chat_id or None,
         max_chat_link=data.max_chat_link or None,
         max_bot_token=data.max_bot_token or None,
     )
@@ -167,7 +206,9 @@ def update_channel(
             ch.platform = ChannelPlatform(value) if value else ch.platform
         elif field == "max_bot_token":
             if value:
-                ch.max_bot_token = value  # only update if non-empty; leave unchanged otherwise
+                ch.max_bot_token = value
+        elif field == "max_chat_id":
+            ch.max_chat_id = value  # allow explicit set/clear
         else:
             setattr(ch, field, value)
     db.commit()
@@ -209,8 +250,13 @@ async def sync_channel(
         raise HTTPException(status_code=400, detail="Bot token не задан для этого канала")
 
     from ..services.max_parser import MaxParserService, MaxAuthError, MaxNotFoundError, MaxApiError
+    from ..db_settings import get_setting as _gs
 
-    svc = MaxParserService(ch.max_bot_token, base_url=settings.max_api_base_url)
+    base_url = _gs(db, "max_api_base_url") or settings.max_api_base_url
+    posts_limit_raw = _gs(db, "max_posts_sample")
+    posts_limit = int(posts_limit_raw) if posts_limit_raw else settings.max_posts_sample
+
+    svc = MaxParserService(ch.max_bot_token, base_url=base_url)
 
     # Step 1: resolve chat_id if not cached
     chat_id = ch.max_chat_id
@@ -238,7 +284,7 @@ async def sync_channel(
         avg_result = await svc.get_avg_views(
             chat_id,
             posts_total=posts_total,
-            posts_limit=settings.max_posts_sample,
+            posts_limit=posts_limit,
         )
     except MaxAuthError as e:
         raise HTTPException(status_code=401, detail=str(e))
@@ -269,6 +315,10 @@ async def sync_channel(
             avg_views_per_post=avg_views,
             posts_sampled=posts_sampled,
         ))
+    db.commit()
+
+    # Update left_count for purchases linked to this channel
+    _update_left_count(db, ch.id)
     db.commit()
 
     log_action(db, current_user, "update", "channel", ch.id,

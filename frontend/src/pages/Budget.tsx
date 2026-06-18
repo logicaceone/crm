@@ -1,4 +1,5 @@
 import { useState, useEffect, CSSProperties } from 'react'
+import { DateRangePicker } from '../components/DateRangePicker'
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -76,6 +77,7 @@ export function Budget() {
     channel_id: '',
   })
   const [activePreset, setActivePreset] = useState<number>(2) // Год
+  const [rangeError, setRangeError] = useState<string | null>(null)
 
   const [channels, setChannels] = useState<Channel[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -108,9 +110,10 @@ export function Budget() {
     setActivePreset(idx)
   }
 
-  function setFilter(key: keyof Filters, val: string) {
+  function handleRangeChange(from: string, to: string) {
     setActivePreset(-1)
-    setFilters(f => ({ ...f, [key]: val }))
+    setRangeError(null)
+    setFilters(f => ({ ...f, from, to }))
   }
 
   const noData = monthly.length === 0 && !loading
@@ -125,8 +128,8 @@ export function Budget() {
       <h1 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 700 }}>Бюджет и маржа</h1>
 
       {/* Filters */}
-      <div style={filtersRowStyle}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div style={filtersRowStyle} className="filters-bar">
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           {PRESETS.map((p, i) => (
             <button
               key={i}
@@ -141,17 +144,20 @@ export function Budget() {
             </button>
           ))}
         </div>
-        <label style={filterLabelStyle}>
-          С
-          <input type="date" value={filters.from} onChange={e => setFilter('from', e.target.value)} style={inputStyle} />
-        </label>
-        <label style={filterLabelStyle}>
-          По
-          <input type="date" value={filters.to} onChange={e => setFilter('to', e.target.value)} style={inputStyle} />
-        </label>
+        <DateRangePicker
+          dateFrom={filters.from}
+          dateTo={filters.to}
+          onChange={handleRangeChange}
+          onError={setRangeError}
+          error={rangeError}
+        />
         <label style={filterLabelStyle}>
           Канал
-          <select value={filters.channel_id} onChange={e => setFilter('channel_id', e.target.value)} style={inputStyle}>
+          <select
+            value={filters.channel_id}
+            onChange={e => setFilters(f => ({ ...f, channel_id: e.target.value }))}
+            style={{ fontSize: 13, padding: '4px 8px', border: '1px solid #E8DDD3', borderRadius: 6 }}
+          >
             <option value="">Все каналы</option>
             {channels.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -161,7 +167,7 @@ export function Budget() {
       </div>
 
       {/* KPI cards */}
-      <div style={cardsRowStyle}>
+      <div style={cardsRowStyle} className="cards-grid-3">
         <KpiCard
           label="Расходы"
           value={summary ? fmt(summary.expenses) : '—'}
@@ -228,43 +234,45 @@ export function Budget() {
           </div>
 
           {/* Table */}
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                {['Месяц', 'Доходы', 'Расходы', 'Маржа', 'Маржа %'].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
+          <div className="table-scroll">
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  {['Месяц', 'Доходы', 'Расходы', 'Маржа', 'Маржа %'].map(h => (
+                    <th key={h} style={thStyle}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {monthly.map(r => (
+                  <tr key={r.month}>
+                    <td style={tdStyle}>{r.month}</td>
+                    <td style={{ ...tdStyle, color: '#16a34a' }}>{fmt(r.income)}</td>
+                    <td style={{ ...tdStyle, color: '#dc2626' }}>{fmt(r.expenses)}</td>
+                    <td style={{ ...tdStyle, color: r.margin >= 0 ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
+                      {r.margin >= 0 ? '+' : ''}{fmt(r.margin)}
+                    </td>
+                    <td style={{ ...tdStyle, color: r.margin >= 0 ? '#16a34a' : '#dc2626' }}>
+                      {r.income ? `${((r.margin / r.income) * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {monthly.map(r => (
-                <tr key={r.month}>
-                  <td style={tdStyle}>{r.month}</td>
-                  <td style={{ ...tdStyle, color: '#16a34a' }}>{fmt(r.income)}</td>
-                  <td style={{ ...tdStyle, color: '#dc2626' }}>{fmt(r.expenses)}</td>
-                  <td style={{ ...tdStyle, color: r.margin >= 0 ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
-                    {r.margin >= 0 ? '+' : ''}{fmt(r.margin)}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#F0E8DE', fontWeight: 600 }}>
+                  <td style={tdStyle}>Итого</td>
+                  <td style={{ ...tdStyle, color: '#16a34a' }}>{fmt(totals.income)}</td>
+                  <td style={{ ...tdStyle, color: '#dc2626' }}>{fmt(totals.expenses)}</td>
+                  <td style={{ ...tdStyle, color: totals.margin >= 0 ? '#16a34a' : '#dc2626' }}>
+                    {totals.margin >= 0 ? '+' : ''}{fmt(totals.margin)}
                   </td>
-                  <td style={{ ...tdStyle, color: r.margin >= 0 ? '#16a34a' : '#dc2626' }}>
-                    {r.income ? `${((r.margin / r.income) * 100).toFixed(1)}%` : '—'}
+                  <td style={{ ...tdStyle, color: totals.margin >= 0 ? '#16a34a' : '#dc2626' }}>
+                    {totals.income ? `${((totals.margin / totals.income) * 100).toFixed(1)}%` : '—'}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: '#F0E8DE', fontWeight: 600 }}>
-                <td style={tdStyle}>Итого</td>
-                <td style={{ ...tdStyle, color: '#16a34a' }}>{fmt(totals.income)}</td>
-                <td style={{ ...tdStyle, color: '#dc2626' }}>{fmt(totals.expenses)}</td>
-                <td style={{ ...tdStyle, color: totals.margin >= 0 ? '#16a34a' : '#dc2626' }}>
-                  {totals.margin >= 0 ? '+' : ''}{fmt(totals.margin)}
-                </td>
-                <td style={{ ...tdStyle, color: totals.margin >= 0 ? '#16a34a' : '#dc2626' }}>
-                  {totals.income ? `${((totals.margin / totals.income) * 100).toFixed(1)}%` : '—'}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+              </tfoot>
+            </table>
+          </div>
         </>
       )}
     </div>
@@ -320,13 +328,6 @@ const filterLabelStyle: CSSProperties = {
   fontWeight: 500,
 }
 
-const inputStyle: CSSProperties = {
-  fontSize: 13,
-  padding: '4px 8px',
-  border: '1px solid #E8DDD3',
-  borderRadius: 6,
-}
-
 const cardsRowStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(3, 1fr)',
@@ -374,11 +375,15 @@ const tableStyle: CSSProperties = {
 
 const thStyle: CSSProperties = {
   textAlign: 'left',
-  padding: '10px 14px',
-  borderBottom: '2px solid #E8DDD3',
-  fontWeight: 600,
-  fontSize: 13,
+  padding: '8px 14px',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: '#8C7B6E',
   background: '#F0E8DE',
+  borderBottom: '1.5px solid #E8DDD3',
+  whiteSpace: 'nowrap',
 }
 
 const tdStyle: CSSProperties = {

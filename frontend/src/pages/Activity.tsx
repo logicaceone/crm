@@ -1,5 +1,9 @@
-import { useState, useEffect, CSSProperties } from 'react'
+import { useState, useEffect, useRef, CSSProperties } from 'react'
 import { apiFetch } from '../lib/api'
+import { SkeletonTable } from '../components/PageSkeleton'
+import { Pagination } from '../components/Pagination'
+
+const PER_PAGE = 15
 
 interface Action {
   id: number
@@ -42,10 +46,18 @@ export function Activity() {
   const [filterEntity, setFilterEntity] = useState('')
   const [filterUser, setFilterUser] = useState('')
   const [userInput, setUserInput] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const tableRef = useRef<HTMLTableElement>(null)
+
+  useEffect(() => {
+    setPage(1)
+  }, [filterAction, filterEntity, filterUser])
 
   useEffect(() => {
     load()
-  }, [filterAction, filterEntity, filterUser])
+  }, [filterAction, filterEntity, filterUser, page])
 
   async function load() {
     setLoading(true)
@@ -53,15 +65,24 @@ export function Activity() {
     if (filterAction) p.set('action', filterAction)
     if (filterEntity) p.set('entity_type', filterEntity)
     if (filterUser) p.set('username', filterUser)
-    p.set('limit', '200')
+    p.set('page', String(page))
+    p.set('per_page', String(PER_PAGE))
     const res = await apiFetch(`/api/activity?${p}`)
     if (res.ok) {
-      setActions(await res.json())
+      const data = await res.json()
+      setActions(data.items)
+      setTotal(data.pagination.total)
+      setTotalPages(data.pagination.total_pages)
       setError('')
     } else {
       setError('Не удалось загрузить действия')
     }
     setLoading(false)
+  }
+
+  function changePage(p: number) {
+    setPage(p)
+    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const hasFilters = filterAction || filterEntity || filterUser
@@ -122,10 +143,10 @@ export function Activity() {
       </div>
 
       {error && <p style={{ color: '#dc2626' }}>{error}</p>}
-      {loading && <p style={{ color: '#D4B896' }}>Загрузка…</p>}
+      {loading && <SkeletonTable rows={8} cols={5} />}
 
-      {!loading && (
-        <table style={tableStyle}>
+      {!loading && (<>
+        <table ref={tableRef} style={tableStyle}>
           <thead>
             <tr>
               <th style={thStyle}>Дата и время</th>
@@ -179,7 +200,14 @@ export function Activity() {
             )}
           </tbody>
         </table>
-      )}
+        <Pagination
+          page={page}
+          total_pages={totalPages}
+          total={total}
+          per_page={PER_PAGE}
+          onChange={changePage}
+        />
+      </>)}
     </div>
   )
 }

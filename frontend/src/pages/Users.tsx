@@ -1,8 +1,13 @@
-import { useState, useEffect, FormEvent, CSSProperties } from 'react'
+import { useState, useEffect, useRef, FormEvent, CSSProperties } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
+import { KebabMenu } from '../components/KebabMenu'
+import { Modal } from '../components/Modal'
+import { Pagination } from '../components/Pagination'
+
+const PER_PAGE = 15
 
 type Role = 'root' | 'admin' | 'manager' | 'viewer'
 
@@ -51,6 +56,10 @@ export function Users() {
   const confirm = useConfirm()
   const [users, setUsers] = useState<UserItem[]>([])
   const [fetchError, setFetchError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const tableRef = useRef<HTMLDivElement>(null)
 
   const [showModal, setShowModal] = useState(false)
   const [newUsername, setNewUsername] = useState('')
@@ -65,12 +74,23 @@ export function Users() {
   const [editError, setEditError] = useState('')
   const [editSubmitting, setEditSubmitting] = useState(false)
 
-  useEffect(() => { loadUsers() }, [])
+  useEffect(() => { loadUsers() }, [page])
 
   async function loadUsers() {
-    const res = await apiFetch('/api/users')
-    if (res.ok) setUsers(await res.json())
-    else setFetchError('Не удалось загрузить пользователей')
+    const res = await apiFetch(`/api/users?page=${page}&per_page=${PER_PAGE}`)
+    if (res.ok) {
+      const data = await res.json()
+      setUsers(data.items)
+      setTotal(data.pagination.total)
+      setTotalPages(data.pagination.total_pages)
+    } else {
+      setFetchError('Не удалось загрузить пользователей')
+    }
+  }
+
+  function changePage(p: number) {
+    setPage(p)
+    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   async function handleCreate(e: FormEvent) {
@@ -89,7 +109,7 @@ export function Users() {
         return
       }
       const created: UserItem = await res.json()
-      setUsers(prev => [...prev, created])
+      await loadUsers()
       setShowModal(false)
       setNewUsername(''); setNewPassword(''); setNewRole('viewer')
       toast.success(`Пользователь ${created.username} создан`)
@@ -134,7 +154,7 @@ export function Users() {
     if (!await confirm(`Удалить пользователя "${u.username}"?`)) return
     const res = await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
-      setUsers(prev => prev.filter(x => x.id !== u.id))
+      await loadUsers()
       toast.success(`Пользователь ${u.username} удалён`)
     } else {
       toast.error('Не удалось удалить пользователя')
@@ -153,7 +173,7 @@ export function Users() {
 
       {fetchError && <div style={{ color: '#dc2626', marginBottom: 12 }}>{fetchError}</div>}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div ref={tableRef} className="table-scroll"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={thStyle}>Пользователь</th>
@@ -184,92 +204,79 @@ export function Users() {
                 </span>
               </td>
               <td style={tdStyle}>{new Date(u.created_at).toLocaleDateString('ru-RU')}</td>
-              <td style={tdStyle}>
-                {canEditUser(me as UserItem, u) && (
-                  <button onClick={() => openEdit(u)} style={{ marginRight: 8, fontSize: 13, padding: '5px 12px' }}>
-                    Редакт.
-                  </button>
-                )}
-                {canDeleteUser(me as UserItem, u) && (
-                  <button
-                    onClick={() => handleDelete(u)}
-                    style={{ background: 'transparent', color: '#dc2626', border: '1px solid #dc262644', fontSize: 13, padding: '5px 12px' }}
-                  >
-                    Удалить
-                  </button>
-                )}
+              <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
+                <KebabMenu actions={[
+                  ...(canEditUser(me as UserItem, u) ? [{ label: 'Редактировать', onClick: () => openEdit(u) }] : []),
+                  ...(canDeleteUser(me as UserItem, u) ? [{ label: 'Удалить', onClick: () => handleDelete(u), danger: true as const }] : []),
+                ]} />
               </td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
+
+      <Pagination
+        page={page}
+        total_pages={totalPages}
+        total={total}
+        per_page={PER_PAGE}
+        onChange={changePage}
+      />
 
       {/* Create modal */}
       {showModal && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Добавить пользователя</h2>
-              <button onClick={() => setShowModal(false)} style={closeBtnStyle}>×</button>
+        <Modal title="Добавить пользователя" onClose={() => setShowModal(false)}>
+          <form onSubmit={handleCreate} style={formStyle}>
+            {modalError && <div style={errStyle}>{modalError}</div>}
+            <label style={labelStyle}>
+              Имя пользователя
+              <input value={newUsername} onChange={e => setNewUsername(e.target.value)} required autoFocus />
+            </label>
+            <label style={labelStyle}>
+              Пароль
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              Роль
+              <select value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
+                {availableRolesToAssign(myRole).map(r => (
+                  <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                ))}
+              </select>
+            </label>
+            <div className="modal-footer">
+              <button type="button" onClick={() => setShowModal(false)}>Отмена</button>
+              <button type="submit" disabled={modalSubmitting}>{modalSubmitting ? 'Создание…' : 'Создать'}</button>
             </div>
-            <form onSubmit={handleCreate} style={formStyle}>
-              {modalError && <div style={errStyle}>{modalError}</div>}
-              <label style={labelStyle}>
-                Имя пользователя
-                <input value={newUsername} onChange={e => setNewUsername(e.target.value)} required autoFocus />
-              </label>
-              <label style={labelStyle}>
-                Пароль
-                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
-              </label>
+          </form>
+        </Modal>
+      )}
+
+      {/* Edit modal */}
+      {editUser && (
+        <Modal title={`Редактировать: ${editUser.username}`} onClose={() => setEditUser(null)}>
+          <form onSubmit={handleEdit} style={formStyle}>
+            {editError && <div style={errStyle}>{editError}</div>}
+            {editUser.role !== 'root' && (
               <label style={labelStyle}>
                 Роль
-                <select value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
+                <select value={editRole} onChange={e => setEditRole(e.target.value as Role)}>
                   {availableRolesToAssign(myRole).map(r => (
                     <option key={r} value={r}>{ROLE_LABEL[r]}</option>
                   ))}
                 </select>
               </label>
-              <div style={actionsStyle}>
-                <button type="button" onClick={() => setShowModal(false)}>Отмена</button>
-                <button type="submit" disabled={modalSubmitting}>{modalSubmitting ? 'Создание…' : 'Создать'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Edit modal */}
-      {editUser && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Редактировать: {editUser.username}</h2>
-              <button onClick={() => setEditUser(null)} style={closeBtnStyle}>×</button>
+            )}
+            <label style={labelStyle}>
+              Новый пароль <span style={{ fontWeight: 400, color: '#8C7B6E' }}>(оставьте пустым если не менять)</span>
+              <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoFocus />
+            </label>
+            <div className="modal-footer">
+              <button type="button" onClick={() => setEditUser(null)}>Отмена</button>
+              <button type="submit" disabled={editSubmitting}>{editSubmitting ? 'Сохранение…' : 'Сохранить'}</button>
             </div>
-            <form onSubmit={handleEdit} style={formStyle}>
-              {editError && <div style={errStyle}>{editError}</div>}
-              {editUser.role !== 'root' && (
-                <label style={labelStyle}>
-                  Роль
-                  <select value={editRole} onChange={e => setEditRole(e.target.value as Role)}>
-                    {availableRolesToAssign(myRole).map(r => (
-                      <option key={r} value={r}>{ROLE_LABEL[r]}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <label style={labelStyle}>
-                Новый пароль <span style={{ fontWeight: 400, color: '#8C7B6E' }}>(оставьте пустым если не менять)</span>
-                <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoFocus />
-              </label>
-              <div style={actionsStyle}>
-                <button type="button" onClick={() => setEditUser(null)}>Отмена</button>
-                <button type="submit" disabled={editSubmitting}>{editSubmitting ? 'Сохранение…' : 'Сохранить'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
     </div>
   )
@@ -278,44 +285,20 @@ export function Users() {
 const thStyle: CSSProperties = {
   textAlign: 'left',
   padding: '10px 14px',
-  borderBottom: '1px solid #E8DDD3',
-  fontWeight: 600,
-  fontSize: 13,
+  borderBottom: '1.5px solid #E8DDD3',
+  fontWeight: 700,
+  fontSize: 11,
   background: '#F0E8DE',
   color: '#8C7B6E',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  whiteSpace: 'nowrap',
 }
 
 const tdStyle: CSSProperties = {
   padding: '9px 14px',
   borderBottom: '1px solid #E8DDD3',
   fontSize: 14,
-}
-
-const overlayStyle: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(44,43,40,0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 100,
-}
-
-const modalStyle: CSSProperties = {
-  background: '#FEFEFE',
-  borderRadius: 10,
-  padding: 28,
-  width: 400,
-  boxShadow: '0 8px 40px rgba(44,43,40,0.15)',
-}
-
-const closeBtnStyle: CSSProperties = {
-  background: 'none',
-  border: 'none',
-  fontSize: 22,
-  cursor: 'pointer',
-  lineHeight: 1,
-  padding: 0,
 }
 
 const formStyle: CSSProperties = {
@@ -338,9 +321,3 @@ const errStyle: CSSProperties = {
   fontSize: 14,
 }
 
-const actionsStyle: CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  justifyContent: 'flex-end',
-  marginTop: 4,
-}

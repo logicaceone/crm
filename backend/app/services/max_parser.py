@@ -57,7 +57,10 @@ class MaxParserService:
         raise last_exc
 
     async def resolve_chat_id(self, chat_link: str) -> Optional[int]:
-        """Resolve a Max.ru chat link to a numeric chat_id via username lookup."""
+        """Resolve a Max.ru chat link to a numeric chat_id.
+        Tries GET /chats/{username} first (direct lookup), then falls back to
+        scanning the paginated list and matching by link field.
+        """
         username = chat_link.strip().rstrip("/")
         for prefix in ("https://max.ru/", "http://max.ru/", "@"):
             if username.startswith(prefix):
@@ -68,11 +71,33 @@ class MaxParserService:
             return None
 
         async with httpx.AsyncClient(timeout=15) as client:
+            # Attempt 1: direct path lookup GET /chats/{username}
+            try:
+                data = await self._get(client, f"/chats/{username}")
+                chat = data.get("chat") or data
+                cid = chat.get("chat_id") or chat.get("id")
+                if cid:
+                    logger.info("[MAX] resolve_chat_id: direct lookup OK %r -> %s", username, cid)
+                    return int(cid)
+            except MaxNotFoundError:
+                logger.info("[MAX] resolve_chat_id: direct GET /chats/%s returned 404, trying list", username)
+            except MaxAuthError:
+                raise
+
+            # Attempt 2: list and match by link field
             try:
                 data = await self._get(client, "/chats", username=username)
                 items = data.get("chats") or data.get("items") or []
-                if items:
-                    return items[0].get("chat_id") or items[0].get("id")
+                username_lower = username.lower()
+                for item in items:
+                    link_field = (item.get("link") or item.get("username") or "")
+                    if link_field.lower().rstrip("/").split("/")[-1] == username_lower:
+                        cid = item.get("chat_id") or item.get("id")
+                        return int(cid) if cid else None
+                logger.warning(
+                    "[MAX] resolve_chat_id: no match for %r in %d items from /chats list",
+                    username, len(items),
+                )
             except MaxNotFoundError:
                 pass
         return None
