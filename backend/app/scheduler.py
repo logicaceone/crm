@@ -69,7 +69,6 @@ async def sync_subscriber_counts() -> None:
                         .filter(
                             ChannelStat.channel_id == ch.id,
                             ChannelStat.date == today,
-                            ChannelStat.avg_views_per_post.is_(None),
                         )
                         .first()
                     )

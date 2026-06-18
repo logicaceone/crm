@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, BigInteger
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, BigInteger, UniqueConstraint
 from sqlalchemy import Enum as PgEnum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -38,3 +38,7 @@ class ChannelStat(Base):
     posts_sampled = Column(Integer, nullable=True)  # how many posts avg_views was computed from
 
     channel = relationship("Channel", back_populates="stats")
+
+    __table_args__ = (
+        UniqueConstraint("channel_id", "date", name="uq_channel_stat_channel_date"),
+    )

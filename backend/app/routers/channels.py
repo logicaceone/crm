@@ -313,16 +313,29 @@ def add_stat(
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
-    stat = ChannelStat(
-        channel_id=channel_id,
-        date=data.date,
-        avg_views_per_post=data.avg_views_per_post,
-        subscribers_count=None,
+    existing = (
+        db.query(ChannelStat)
+        .filter(ChannelStat.channel_id == channel_id, ChannelStat.date == data.date)
+        .first()
     )
-    db.add(stat)
+    if existing:
+        # Update only the field this endpoint owns; leave subscribers_count
+        # (filled by the platform sync) alone.
+        existing.avg_views_per_post = data.avg_views_per_post
+        stat = existing
+        action = "update"
+    else:
+        stat = ChannelStat(
+            channel_id=channel_id,
+            date=data.date,
+            avg_views_per_post=data.avg_views_per_post,
+            subscribers_count=None,
+        )
+        db.add(stat)
+        action = "create"
     db.commit()
     db.refresh(stat)
-    log_action(db, current_user, "create", "channel_stat", stat.id,
+    log_action(db, current_user, action, "channel_stat", stat.id,
                f"Снапшот {ch.name}: {data.avg_views_per_post} просм/пост ({data.date})")
     return stat
 
