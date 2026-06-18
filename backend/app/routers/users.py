@@ -32,6 +32,7 @@ def list_users(
     return {
         "items": [UserResponse.model_validate(u) for u in items],
         "pagination": {"page": page, "per_page": per_page, "total": total, "total_pages": total_pages},
+        "admin_count": _admin_count(db),
     }
 
 
@@ -59,6 +60,14 @@ def create_user(
     return user
 
 
+_ADMIN_ROLES = (UserRole.root, UserRole.admin)
+
+
+def _admin_count(db: Session) -> int:
+    """Total number of accounts with management access (root + admin)."""
+    return db.query(User).filter(User.role.in_(_ADMIN_ROLES)).count()
+
+
 @router.patch("/{user_id}", response_model=UserResponse)
 def update_user(
     user_id: int,
@@ -69,6 +78,9 @@ def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # Block self-role-change to avoid leaving the system without admins.
+    if user_id == me.id and data.role is not None and data.role != user.role:
+        raise HTTPException(status_code=400, detail="You cannot change your own role.")
     if user.role == UserRole.root and me.role != UserRole.root:
         raise HTTPException(status_code=403, detail="Cannot edit root user")
     if user.role == UserRole.admin and me.role == UserRole.admin and user.id != me.id:
@@ -94,7 +106,7 @@ def delete_user(
     me: User = Depends(root_or_admin),
 ):
     if user_id == me.id:
-        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -102,6 +114,8 @@ def delete_user(
         raise HTTPException(status_code=403, detail="Cannot delete root user")
     if user.role == UserRole.admin and me.role != UserRole.root:
         raise HTTPException(status_code=403, detail="Only root can delete admin users")
+    if user.role in _ADMIN_ROLES and _admin_count(db) <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete the last admin account.")
     username = user.username
     db.delete(user)
     db.commit()

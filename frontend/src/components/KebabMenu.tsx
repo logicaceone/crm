@@ -6,6 +6,7 @@ export interface KebabAction {
   onClick: () => void
   danger?: boolean
   disabled?: boolean
+  title?: string
 }
 
 export function KebabMenu({ actions }: { actions: KebabAction[] }) {
@@ -57,6 +58,7 @@ export function KebabMenu({ actions }: { actions: KebabAction[] }) {
           key={i}
           onClick={() => { action.onClick(); setOpen(false) }}
           disabled={action.disabled}
+          title={action.title}
           style={{
             display: 'block',
             width: '100%',

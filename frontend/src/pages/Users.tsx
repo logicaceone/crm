@@ -59,6 +59,7 @@ export function Users() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [adminCount, setAdminCount] = useState(0)
   const tableRef = useRef<HTMLDivElement>(null)
 
   const [showModal, setShowModal] = useState(false)
@@ -83,6 +84,7 @@ export function Users() {
       setUsers(data.items)
       setTotal(data.pagination.total)
       setTotalPages(data.pagination.total_pages)
+      setAdminCount(data.admin_count ?? 0)
     } else {
       setFetchError('Не удалось загрузить пользователей')
     }
@@ -183,35 +185,58 @@ export function Users() {
           </tr>
         </thead>
         <tbody>
-          {users.map(u => (
-            <tr key={u.id}>
-              <td style={tdStyle}>
-                {u.username}
-                {u.id === me.id && <span style={{ marginLeft: 8, color: '#D4B896', fontSize: 12 }}>(вы)</span>}
-              </td>
-              <td style={tdStyle}>
-                <span style={{
-                  display: 'inline-block',
-                  padding: '2px 10px',
-                  borderRadius: 20,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  background: ROLE_COLOR[u.role] + '18',
-                  color: ROLE_COLOR[u.role],
-                  border: `1px solid ${ROLE_COLOR[u.role]}44`,
-                }}>
-                  {ROLE_LABEL[u.role]}
-                </span>
-              </td>
-              <td style={tdStyle}>{new Date(u.created_at).toLocaleDateString('ru-RU')}</td>
-              <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
-                <KebabMenu actions={[
-                  ...(canEditUser(me as UserItem, u) ? [{ label: 'Редактировать', onClick: () => openEdit(u) }] : []),
-                  ...(canDeleteUser(me as UserItem, u) ? [{ label: 'Удалить', onClick: () => handleDelete(u), danger: true as const }] : []),
-                ]} />
-              </td>
-            </tr>
-          ))}
+          {users.map(u => {
+            const isSelf = u.id === me.id
+            const isLastAdmin = (u.role === 'root' || u.role === 'admin') && adminCount <= 1
+            const deleteDisabled = isSelf || isLastAdmin
+            const deleteTitle = isSelf
+              ? 'Нельзя удалить собственную учётную запись'
+              : isLastAdmin
+                ? 'Нельзя удалить последнего администратора'
+                : undefined
+            const editTitle = isSelf
+              ? 'Роль собственной учётной записи изменить нельзя — можно только сменить пароль'
+              : undefined
+            return (
+              <tr key={u.id}>
+                <td style={tdStyle}>
+                  {u.username}
+                  {isSelf && <span style={{ marginLeft: 8, color: '#D4B896', fontSize: 12 }}>(вы)</span>}
+                </td>
+                <td style={tdStyle}>
+                  <span style={{
+                    display: 'inline-block',
+                    padding: '2px 10px',
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: ROLE_COLOR[u.role] + '18',
+                    color: ROLE_COLOR[u.role],
+                    border: `1px solid ${ROLE_COLOR[u.role]}44`,
+                  }}>
+                    {ROLE_LABEL[u.role]}
+                  </span>
+                </td>
+                <td style={tdStyle}>{new Date(u.created_at).toLocaleDateString('ru-RU')}</td>
+                <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
+                  <KebabMenu actions={[
+                    ...(canEditUser(me as UserItem, u)
+                      ? [{ label: 'Редактировать', onClick: () => openEdit(u), title: editTitle }]
+                      : []),
+                    ...(canDeleteUser(me as UserItem, u)
+                      ? [{
+                          label: 'Удалить',
+                          onClick: () => handleDelete(u),
+                          danger: true as const,
+                          disabled: deleteDisabled,
+                          title: deleteTitle,
+                        }]
+                      : []),
+                  ]} />
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table></div>
 
@@ -257,7 +282,7 @@ export function Users() {
         <Modal title={`Редактировать: ${editUser.username}`} onClose={() => setEditUser(null)}>
           <form onSubmit={handleEdit} style={formStyle}>
             {editError && <div style={errStyle}>{editError}</div>}
-            {editUser.role !== 'root' && (
+            {editUser.role !== 'root' && editUser.id !== me.id && (
               <label style={labelStyle}>
                 Роль
                 <select value={editRole} onChange={e => setEditRole(e.target.value as Role)}>
@@ -266,6 +291,11 @@ export function Users() {
                   ))}
                 </select>
               </label>
+            )}
+            {editUser.id === me.id && (
+              <div style={{ fontSize: 12, color: '#8C7B6E', padding: '6px 0' }}>
+                Роль собственной учётной записи изменить нельзя.
+              </div>
             )}
             <label style={labelStyle}>
               Новый пароль <span style={{ fontWeight: 400, color: '#8C7B6E' }}>(оставьте пустым если не менять)</span>
