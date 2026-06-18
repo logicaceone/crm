@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text, BigInteger
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text, BigInteger, CheckConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -68,3 +68,18 @@ class AdPurchase(Base):
     external_channel = relationship("ExternalChannel", back_populates="purchases")
     channel = relationship("Channel", foreign_keys=[channel_id])
     creator = relationship("User")
+
+    __table_args__ = (
+        CheckConstraint(
+            "type <> 'target' OR target_platform IS NOT NULL",
+            name="ck_purchase_target_platform",
+        ),
+        CheckConstraint(
+            "type <> 'ad' OR external_channel_id IS NOT NULL",
+            name="ck_purchase_ad_channel",
+        ),
+        CheckConstraint(
+            "invite_link IS NULL OR type = 'ad'",
+            name="ck_purchase_invite_link_type",
+        ),
+    )

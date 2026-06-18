@@ -153,6 +153,13 @@ def create_purchase(
 
     payload = data.model_dump()
     payload["currency"] = "RUB"
+    if data.type == PurchaseType.target:
+        # Strip ad-only fields so a misbehaving client cannot leave them set.
+        payload["external_channel_id"] = None
+        payload["format"] = None
+        payload["invite_link"] = None
+    else:
+        payload["target_platform"] = None
     purchase = AdPurchase(**payload, created_by=current_user.id)
     db.add(purchase)
     db.commit()
@@ -179,6 +186,10 @@ def get_purchase(
     return p
 
 
+def _type_str(t) -> str:
+    return t.value if hasattr(t, "value") else str(t)
+
+
 @router.patch("/{purchase_id}", response_model=AdPurchaseResponse)
 def update_purchase(
     purchase_id: int,
@@ -189,10 +200,55 @@ def update_purchase(
     p = db.query(AdPurchase).filter(AdPurchase.id == purchase_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Purchase not found")
-    for field, value in data.model_dump(exclude_unset=True).items():
-        if field == "currency":
-            continue
+
+    updates = data.model_dump(exclude_unset=True)
+    # Currency is server-controlled.
+    updates.pop("currency", None)
+
+    old_type = _type_str(p.type)
+    new_type_raw = updates.get("type", p.type)
+    new_type = _type_str(new_type_raw)
+    type_changing = "type" in updates and new_type != old_type
+
+    # Validate required fields for the post-update type.
+    if new_type == PurchaseType.target.value:
+        target_platform = updates.get("target_platform", p.target_platform)
+        if not target_platform:
+            raise HTTPException(
+                status_code=400,
+                detail="target_platform is required for type=target",
+            )
+    elif new_type == PurchaseType.ad.value:
+        # On a target→ad switch the client must supply external_channel_id
+        # in the same payload, otherwise the row would violate the CHECK.
+        ext_channel = updates.get("external_channel_id", p.external_channel_id)
+        if not ext_channel:
+            raise HTTPException(
+                status_code=400,
+                detail="external_channel_id is required for type=ad",
+            )
+
+    # Cleanup stale fields from the old type. Drop the corresponding keys
+    # from the payload so client values cannot reintroduce them.
+    if type_changing:
+        if new_type == PurchaseType.target.value:
+            p.external_channel_id = None
+            p.format = None
+            p.invite_link = None
+            p.joined_count = 0
+            p.left_count = 0
+            p.cpa_synced_at = None
+            for k in ("external_channel_id", "format", "invite_link",
+                      "joined_count", "left_count"):
+                updates.pop(k, None)
+        elif new_type == PurchaseType.ad.value:
+            p.target_platform = None
+            updates.pop("target_platform", None)
+
+    # Apply remaining payload fields.
+    for field, value in updates.items():
         setattr(p, field, value)
+
     db.commit()
     db.refresh(p)
     log_action(db, current_user, "update", "purchase", p.id, f"Закупка #{p.id} обновлена")
