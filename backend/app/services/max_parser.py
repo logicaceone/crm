@@ -21,6 +21,47 @@ class MaxNotFoundError(MaxApiError):
     pass
 
 
+def normalize_chat_link(raw: Optional[str]) -> str:
+    """Normalize any reasonable Max.ru chat link to a bare username.
+
+    Accepts:
+      @channel
+      channel
+      max.ru/channel
+      www.max.ru/channel
+      https://max.ru/channel
+      http://max.ru/channel
+      https://max.ru/@channel
+      max.ru/channel/about?utm=foo  (extra path/query trimmed)
+
+    Returns the bare 'channel' identifier. Empty string when nothing
+    salvageable was found (caller can treat as invalid input).
+    """
+    if not raw:
+        return ""
+    link = raw.strip()
+    for scheme in ("https://", "http://"):
+        if link.startswith(scheme):
+            link = link[len(scheme):]
+            break
+    if link.startswith("www."):
+        link = link[4:]
+    if link.startswith("max.ru/"):
+        link = link[len("max.ru/"):]
+    if link.startswith("@"):
+        link = link[1:]
+    link = link.split("/")[0].split("?")[0].strip()
+    return link
+
+
+def canonical_chat_link(raw: Optional[str]) -> Optional[str]:
+    """Return a canonical 'https://max.ru/{name}' form, or None for empty."""
+    name = normalize_chat_link(raw)
+    if not name:
+        return None
+    return f"https://max.ru/{name}"
+
+
 class MaxParserService:
     def __init__(self, bot_token: str, base_url: str = "https://platform-api.max.ru"):
         self.bot_token = bot_token
@@ -61,12 +102,7 @@ class MaxParserService:
         Tries GET /chats/{username} first (direct lookup), then falls back to
         scanning the paginated list and matching by link field.
         """
-        username = chat_link.strip().rstrip("/")
-        for prefix in ("https://max.ru/", "http://max.ru/", "@"):
-            if username.startswith(prefix):
-                username = username[len(prefix):]
-                break
-        username = username.split("/")[0].split("?")[0]
+        username = normalize_chat_link(chat_link)
         if not username:
             return None
 

@@ -20,6 +20,7 @@ from .auth import get_current_user, require_roles
 from ..activity import log_action
 from ..config import settings
 from ..utils.stats import get_latest_snapshot, get_baseline_30d_ago, update_left_count
+from ..services.max_parser import canonical_chat_link, normalize_chat_link
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
@@ -119,13 +120,16 @@ def create_channel(
     db: Session = Depends(get_db),
     current_user: User = Depends(write_access),
 ):
+    max_link_in = (data.max_chat_link or "").strip()
+    if max_link_in and normalize_chat_link(max_link_in) == "":
+        raise HTTPException(status_code=400, detail="Invalid Max.ru channel link format")
     ch = Channel(
         name=data.name,
         platform=ChannelPlatform(data.platform),
         tg_link=data.tg_link or None,
         description=data.description or None,
         max_chat_id=data.max_chat_id or None,
-        max_chat_link=data.max_chat_link or None,
+        max_chat_link=canonical_chat_link(max_link_in) if max_link_in else None,
         max_bot_token=data.max_bot_token or None,
     )
     db.add(ch)
@@ -164,7 +168,15 @@ def update_channel(
     for field, value in updates.items():
         if field == "platform":
             ch.platform = ChannelPlatform(value) if value else ch.platform
-        elif field in ("max_bot_token", "max_chat_link", "tg_link", "description"):
+        elif field == "max_chat_link":
+            # Empty / null clears. Non-empty is normalized to the canonical
+            # `https://max.ru/{name}` form so the stored value is always a
+            # working URL the UI can render as an <a href>.
+            link_in = (value or "").strip()
+            if link_in and normalize_chat_link(link_in) == "":
+                raise HTTPException(status_code=400, detail="Invalid Max.ru channel link format")
+            ch.max_chat_link = canonical_chat_link(link_in) if link_in else None
+        elif field in ("max_bot_token", "tg_link", "description"):
             # Empty string and null both mean "clear the field".
             setattr(ch, field, value or None)
         elif field == "max_chat_id":

@@ -460,23 +460,28 @@ function ChannelForm({
               )}
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-              <input
-                placeholder="Ссылка Max.ru (https://max.ru/...)"
-                value={form.max_chat_link}
-                onChange={e => set({ max_chat_link: e.target.value })}
-                style={{ flex: 1 }}
-              />
-              {isEdit && existingChatLink && onClearChatLink && (
-                <button
-                  type="button"
-                  onClick={onClearChatLink}
-                  style={dangerLinkBtnStyle}
-                  title="Очистить ссылку"
-                >
-                  Очистить
-                </button>
-              )}
+            <div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                <input
+                  placeholder="@channel или https://max.ru/channel"
+                  value={form.max_chat_link}
+                  onChange={e => set({ max_chat_link: e.target.value })}
+                  style={{ flex: 1 }}
+                />
+                {isEdit && existingChatLink && onClearChatLink && (
+                  <button
+                    type="button"
+                    onClick={onClearChatLink}
+                    style={dangerLinkBtnStyle}
+                    title="Очистить ссылку"
+                  >
+                    Очистить
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: '#8C7B6E', marginTop: 4 }}>
+                Принимаются любые форматы: @name, max.ru/name, полная ссылка
+              </div>
             </div>
           )}
           <label style={labelStyle}>
