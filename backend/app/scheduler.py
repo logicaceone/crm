@@ -8,6 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from .config import settings
 from .database import SessionLocal
 from .models.channel import Channel, ChannelStat, ChannelPlatform
+from .utils.stats import update_left_count
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,9 @@ async def sync_subscriber_counts() -> None:
                             subscribers_count=count,
                             avg_views_per_post=None,
                         ))
+                    db.commit()
+                    # Propagate any subscriber drop into per-purchase left_count.
+                    update_left_count(db, ch.id)
                     db.commit()
                     synced += 1
                     print(f"[TG] Synced @{username}: {count} subscribers", flush=True)
@@ -156,6 +160,9 @@ async def sync_max_channels() -> None:
                         avg_views_per_post=avg_views,
                         posts_sampled=posts_sampled,
                     ))
+                db.commit()
+                # Propagate any subscriber drop into per-purchase left_count.
+                update_left_count(db, ch.id)
                 db.commit()
                 synced += 1
                 print(f"[MAX] Synced {ch.name}: {subscribers} subs, {avg_views} avg_views ({posts_sampled} posts)", flush=True)

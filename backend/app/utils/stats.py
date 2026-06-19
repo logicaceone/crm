@@ -1,7 +1,10 @@
 from datetime import date, timedelta
 from typing import Iterable, Optional
 
+from sqlalchemy.orm import Session
+
 from ..models.channel import ChannelStat
+from ..models.purchase import AdPurchase
 
 
 def _valid_snapshots(snapshots: Iterable[ChannelStat]) -> list[ChannelStat]:
@@ -32,6 +35,43 @@ def get_baseline_30d_ago(snapshots: Iterable[ChannelStat]) -> Optional[ChannelSt
     if not candidates:
         return None
     return min(candidates, key=lambda s: abs((s.date - target_date).days))
+
+
+def update_left_count(db: Session, channel_id: int) -> None:
+    """Distribute subscriber loss between the last two snapshots equally
+    across active purchases (joined_count > 0).
+
+    Telegram does not report which invite link a leaver came through, so
+    per-purchase left_count is always an approximation. Equal division
+    is the least biased; the integer remainder is dropped on the floor.
+
+    Safe to call repeatedly — only acts on the gap between the two most
+    recent snapshots, so a same-day double-sync does not double-count.
+    """
+    last_two = (
+        db.query(ChannelStat)
+        .filter(ChannelStat.channel_id == channel_id, ChannelStat.subscribers_count.isnot(None))
+        .order_by(ChannelStat.date.desc())
+        .limit(2)
+        .all()
+    )
+    if len(last_two) < 2:
+        return
+    loss = max(0, last_two[1].subscribers_count - last_two[0].subscribers_count)
+    if loss == 0:
+        return
+    purchases = (
+        db.query(AdPurchase)
+        .filter(AdPurchase.channel_id == channel_id, AdPurchase.joined_count > 0)
+        .all()
+    )
+    if not purchases:
+        return
+    per = loss // len(purchases)
+    if per == 0:
+        return
+    for p in purchases:
+        p.left_count += per
 
 
 def get_growth_30d(snapshots: Iterable[ChannelStat]) -> Optional[int]:

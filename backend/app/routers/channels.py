@@ -19,45 +19,10 @@ from ..schemas.channels import (
 from .auth import get_current_user, require_roles
 from ..activity import log_action
 from ..config import settings
-from ..utils.stats import get_latest_snapshot, get_baseline_30d_ago
+from ..utils.stats import get_latest_snapshot, get_baseline_30d_ago, update_left_count
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
-
-def _update_left_count(db: Session, channel_id: int) -> None:
-    """Distribute subscriber loss between last two snapshots equally across
-    active purchases (joined_count > 0).
-
-    Per-purchase left_count is always an approximation — Telegram does not
-    report which invite link a user left from. Equal distribution is the
-    least misleading approach; the integer remainder is discarded.
-    """
-    last_two = (
-        db.query(ChannelStat)
-        .filter(ChannelStat.channel_id == channel_id, ChannelStat.subscribers_count.isnot(None))
-        .order_by(ChannelStat.date.desc())
-        .limit(2)
-        .all()
-    )
-    if len(last_two) < 2:
-        return
-    current_subs = last_two[0].subscribers_count
-    prev_subs = last_two[1].subscribers_count
-    loss = max(0, prev_subs - current_subs)
-    if loss == 0:
-        return
-    purchases = (
-        db.query(AdPurchase)
-        .filter(AdPurchase.channel_id == channel_id, AdPurchase.joined_count > 0)
-        .all()
-    )
-    if not purchases:
-        return
-    loss_per_purchase = loss // len(purchases)
-    if loss_per_purchase == 0:
-        return
-    for p in purchases:
-        p.left_count += loss_per_purchase
 
 read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, UserRole.viewer])
 write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
@@ -313,7 +278,7 @@ async def sync_channel(
     db.commit()
 
     # Update left_count for purchases linked to this channel
-    _update_left_count(db, ch.id)
+    update_left_count(db, ch.id)
     db.commit()
 
     log_action(db, current_user, "update", "channel", ch.id,
