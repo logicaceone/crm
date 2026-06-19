@@ -35,10 +35,8 @@ def list_actions(
     entity_type: Optional[str] = None,
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = None,
-    page: Optional[int] = None,
-    per_page: int = Query(default=15, ge=1, le=200),
-    limit: Optional[int] = Query(default=None, le=500),
-    offset: int = 0,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=15, ge=1, le=100),
     db: Session = Depends(get_db),
     _: User = Depends(root_or_admin),
 ):
@@ -54,8 +52,6 @@ def list_actions(
     if to:
         q = q.filter(UserAction.created_at <= to)
     q = q.order_by(UserAction.created_at.desc())
-    if page is None:
-        return q.offset(offset).limit(limit or 100).all()
     total = q.count()
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = max(1, min(page, total_pages))

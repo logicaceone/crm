@@ -18,7 +18,7 @@ root_or_admin = require_roles([UserRole.root, UserRole.admin])
 @router.get("")
 def list_users(
     page: Optional[int] = None,
-    per_page: int = Query(default=15, ge=1, le=200),
+    per_page: int = Query(default=15, ge=1, le=100),
     db: Session = Depends(get_db),
     _: User = Depends(root_or_admin),
 ):
