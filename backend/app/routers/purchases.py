@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -103,18 +104,46 @@ def purchases_summary(
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
-    q = _apply_filters(db.query(AdPurchase), external_channel_id, status, from_, to)
+    # Compute everything server-side with aggregates so we never load
+    # individual AdPurchase rows into Python.
+    breakdown_q = _apply_filters(
+        db.query(
+            AdPurchase.type,
+            func.count(AdPurchase.id),
+            func.coalesce(func.sum(AdPurchase.price), 0),
+        ),
+        external_channel_id, status, from_, to,
+    )
     if type_filter:
-        q = q.filter(AdPurchase.type == type_filter)
-    purchases = q.all()
-    total = sum(p.price for p in purchases)
-    by_type = {
-        "ad": sum(p.price for p in purchases if p.type == PurchaseType.ad),
-        "target": sum(p.price for p in purchases if p.type == PurchaseType.target),
-    }
-    currencies = {p.currency for p in purchases}
-    currency = currencies.pop() if len(currencies) == 1 else "mixed"
-    return PurchaseSummary(total=total, by_type=by_type, currency=currency, count=len(purchases))
+        breakdown_q = breakdown_q.filter(AdPurchase.type == type_filter)
+    rows = breakdown_q.group_by(AdPurchase.type).all()
+
+    by_type: dict[str, float] = {"ad": 0.0, "target": 0.0}
+    total = 0.0
+    count = 0
+    for ptype, cnt, sum_price in rows:
+        key = ptype.value if hasattr(ptype, "value") else str(ptype)
+        amount = float(sum_price or 0)
+        by_type[key] = amount
+        total += amount
+        count += int(cnt or 0)
+
+    # Distinct currency in a single cheap aggregate query — same filter set.
+    currencies_q = _apply_filters(
+        db.query(AdPurchase.currency).distinct(),
+        external_channel_id, status, from_, to,
+    )
+    if type_filter:
+        currencies_q = currencies_q.filter(AdPurchase.type == type_filter)
+    currencies = [c for (c,) in currencies_q.all()]
+    if len(currencies) == 0:
+        currency = "RUB"
+    elif len(currencies) == 1:
+        currency = currencies[0]
+    else:
+        currency = "mixed"
+
+    return PurchaseSummary(total=total, by_type=by_type, currency=currency, count=count)
 
 
 @router.get("")
