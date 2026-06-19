@@ -4,11 +4,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
-from alembic.config import Config as AlembicConfig
-from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig  # used by _check_migration_revision
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 
 from .config import settings
-from .database import SessionLocal
+from .database import SessionLocal, engine
 from .models.user import User, UserRole
 from .models.cpa_member import CpaMember  # noqa: F401 — ensures table is in metadata for migrations
 from .routers import auth, users, channels
@@ -24,9 +25,30 @@ from .routers.stats import router as stats_router
 from .scheduler import start_scheduler, stop_scheduler
 
 
-def _run_migrations() -> None:
-    cfg = AlembicConfig("alembic.ini")
-    alembic_command.upgrade(cfg, "head")
+def _check_migration_revision() -> None:
+    """Read-only check that the DB schema matches the Alembic head.
+
+    Migrations are applied by entrypoint.sh BEFORE any worker starts.
+    This function just compares the recorded revision against the
+    scripts directory and warns if they disagree — safe to run from
+    every worker because it only reads.
+    """
+    try:
+        cfg = AlembicConfig("alembic.ini")
+        script = ScriptDirectory.from_config(cfg)
+        head = script.get_current_head()
+        with engine.connect() as conn:
+            current = MigrationContext.configure(conn).get_current_revision()
+        if current != head:
+            logger.warning(
+                "Database schema is NOT up to date — current=%s, head=%s. "
+                "Run `alembic upgrade head` (entrypoint.sh does this on container start).",
+                current, head,
+            )
+        else:
+            logger.info("Database schema up to date at revision %s", current)
+    except Exception as e:
+        logger.warning("Migration revision check failed: %s", e)
 
 
 def _check_admin_exists() -> None:
@@ -71,7 +93,11 @@ async def _check_telegram_webhook() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _run_migrations()
+    # Migrations are applied by entrypoint.sh BEFORE uvicorn starts —
+    # safe with multiple workers (no race, no double-apply). We only
+    # read the revision here to surface a clear warning if someone
+    # bypassed the entrypoint (e.g. running the app outside Docker).
+    _check_migration_revision()
     _check_admin_exists()
     await _check_telegram_webhook()
     start_scheduler()
