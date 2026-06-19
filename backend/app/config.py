@@ -1,29 +1,24 @@
-from typing import Optional, Union
-from pydantic import field_validator
+from typing import Optional
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     database_url: str
     secret_key: str
-    # Comma-separated list in the env var (CORS_ORIGINS), parsed into a
-    # list[str] at load time. Supports any number of origins; passing a
-    # single origin still works unchanged.
-    cors_origins: list[str] = ["http://localhost:5173"]
+    # CORS_ORIGINS env var is a comma-separated string. We keep the raw
+    # field as str so pydantic-settings doesn't try to JSON-parse it as
+    # a list; the .cors_origins_list property does the split on demand.
+    # A single origin (no comma) still works unchanged.
+    cors_origins: str = "http://localhost:5173"
     telegram_bot_token: Optional[str] = None
     max_api_base_url: str = "https://platform-api.max.ru"
     max_posts_sample: int = 20
 
     model_config = {"env_file": ".env"}
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def _parse_cors_origins(cls, v: Union[str, list[str], None]) -> list[str]:
-        if v is None or v == "":
-            return []
-        if isinstance(v, str):
-            return [s.strip() for s in v.split(",") if s.strip()]
-        return v
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [s.strip() for s in self.cors_origins.split(",") if s.strip()]
 
 
 settings = Settings()

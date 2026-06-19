@@ -83,12 +83,12 @@ app = FastAPI(title="CRM API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-logger.info("CORS allowed origins: %s", settings.cors_origins)
+logger.info("CORS allowed origins: %s", settings.cors_origins_list)
 
 app.include_router(auth.router)
 app.include_router(users.router)
