@@ -1,7 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
 
@@ -98,6 +100,31 @@ app.include_router(dashboard_router)
 app.include_router(activity_router)
 app.include_router(system_settings_router)
 app.include_router(stats_router)
+
+
+# Map DB constraint names to user-facing 400 messages. Defence-in-depth:
+# the application layer should reject these states first; the handler here
+# catches anything that slips through (raw API misuse, race conditions,
+# future code that forgets a validator).
+_CONSTRAINT_MESSAGES: dict[str, str] = {
+    "ck_purchase_invite_link_type": "invite_link is not allowed for type=target",
+    "ck_purchase_target_platform": "target_platform is required for type=target",
+    "ck_purchase_ad_channel": "external_channel_id is required for type=ad",
+    "uq_channel_stat_channel_date": "Snapshot for this channel and date already exists",
+}
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(_request: Request, exc: IntegrityError) -> JSONResponse:
+    # Session rollback is handled inside get_db's except block; by the time
+    # this handler runs the failed session is already cleaned up.
+    error_str = str(getattr(exc, "orig", exc))
+    detail = next(
+        (msg for name, msg in _CONSTRAINT_MESSAGES.items() if name in error_str),
+        "Database constraint violation",
+    )
+    logger.warning("IntegrityError: %s", error_str)
+    return JSONResponse(status_code=400, content={"detail": detail})
 
 
 @app.get("/health")

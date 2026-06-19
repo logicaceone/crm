@@ -241,6 +241,14 @@ def update_purchase(
                 detail="external_channel_id is required for type=ad",
             )
 
+    # invite_link is allowed only for ad — covers the third CHECK constraint.
+    if "invite_link" in updates and updates["invite_link"] is not None \
+            and new_type != PurchaseType.ad.value:
+        raise HTTPException(
+            status_code=400,
+            detail="invite_link is not allowed for type=target",
+        )
+
     # Cleanup stale fields from the old type. Drop the corresponding keys
     # from the payload so client values cannot reintroduce them.
     if type_changing:

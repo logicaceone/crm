@@ -14,5 +14,11 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        # Roll back any in-flight transaction so the session is not left
+        # in a poisoned state. Then re-raise — FastAPI's exception handler
+        # will translate the error for the client.
+        db.rollback()
+        raise
     finally:
         db.close()
