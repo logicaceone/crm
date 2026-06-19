@@ -404,7 +404,17 @@ async def sync_cpa(
     except TelegramCPAError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    # `member_count` is the CUMULATIVE total of unique users who joined via
+    # this invite link, not a delta. Assign (don't `+=`) so syncing twice
+    # produces the same result as syncing once. The delta `(current - prev)`
+    # gives "new joins since last sync" — useful for charting later.
+    #
+    # Re-join limitation: if a user leaves and re-joins through the same
+    # link, Telegram counts them again. Bot API does not expose unique
+    # joiners separately, so joined_count may slightly overcount in high-
+    # churn channels. No workaround is available.
     p.joined_count = member_count
+    p.cpa_last_member_count = member_count
     p.cpa_synced_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(p)

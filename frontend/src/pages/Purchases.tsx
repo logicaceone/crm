@@ -110,6 +110,22 @@ const TARGET_PLATFORMS = ['VK Ads', 'Яндекс Директ', 'Другое']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function formatRelativeTime(iso: string): string {
+  const ts = new Date(iso).getTime()
+  if (isNaN(ts)) return ''
+  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000))
+  if (sec < 60) return 'только что'
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min} мин назад`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} ч назад`
+  const days = Math.floor(hr / 24)
+  if (days < 30) return `${days} дн назад`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months} мес назад`
+  return `${Math.floor(months / 12)} г назад`
+}
+
 function buildQS(f: Filters): string {
   const p = new URLSearchParams()
   if (f.external_channel_id) p.set('external_channel_id', f.external_channel_id)
@@ -598,19 +614,26 @@ export function Purchases() {
                     {/* Вступило — только для рекламы */}
                     <td style={tdStyle}>
                       {isAd && p.channel ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontWeight: p.joined_count > 0 ? 600 : undefined }}>{p.joined_count}</span>
-                          {isTg && p.invite_link && canWrite && (
-                            <button
-                              onClick={() => handleSyncCpa(p)}
-                              disabled={syncingCpaId === p.id}
-                              style={microBtnStyle}
-                              title="Обновить из Telegram"
-                            >
-                              {syncingCpaId === p.id ? '…' : 'Обн.'}
-                            </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontWeight: p.joined_count > 0 ? 600 : undefined }}>{p.joined_count}</span>
+                            {isTg && p.invite_link && canWrite && (
+                              <button
+                                onClick={() => handleSyncCpa(p)}
+                                disabled={syncingCpaId === p.id}
+                                style={microBtnStyle}
+                                title="Обновить из Telegram"
+                              >
+                                {syncingCpaId === p.id ? '…' : 'Обн.'}
+                              </button>
+                            )}
+                          </span>
+                          {p.cpa_synced_at && (
+                            <span style={{ fontSize: 11, color: '#8C7B6E' }} title={new Date(p.cpa_synced_at).toLocaleString('ru-RU')}>
+                              обновлено {formatRelativeTime(p.cpa_synced_at)}
+                            </span>
                           )}
-                        </span>
+                        </div>
                       ) : '—'}
                     </td>
 

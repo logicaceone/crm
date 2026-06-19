@@ -61,6 +61,11 @@ class AdPurchase(Base):
     joined_count = Column(Integer, nullable=False, default=0, server_default="0")
     left_count = Column(Integer, nullable=False, default=0, server_default="0")
     cpa_synced_at = Column(DateTime(timezone=True), nullable=True)
+    # Last value of member_count returned by Telegram getChatInviteLink.
+    # Stored to detect deltas between syncs (current - previous = new joins).
+    # joined_count is always assigned to the current member_count — the
+    # `+=` accumulation pattern from older drafts would inflate on every sync.
+    cpa_last_member_count = Column(Integer, nullable=False, default=0, server_default="0")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
