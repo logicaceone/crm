@@ -121,11 +121,12 @@ class TelegramCPAService:
             raise TelegramCPAError(f"Telegram API: {data.get('description', 'unknown error')}")
         return data["result"]["invite_link"]
 
-    async def get_invite_link_member_count(self, chat_id: Union[int, str], invite_link: str) -> int:
-        """Return number of members who joined via the given invite link.
+    async def get_invite_link_info(self, chat_id: Union[int, str], invite_link: str) -> dict:
+        """Return the raw ChatInviteLink dict for the given link.
 
         Calls Telegram getChatInviteLink — per-link query, no offset state,
-        no race conditions across parallel calls.
+        no race conditions across parallel calls. The returned dict
+        includes `member_count`, `is_revoked`, `expire_date`, etc.
         """
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
@@ -135,5 +136,21 @@ class TelegramCPAService:
         data = r.json()
         if not data.get("ok"):
             raise TelegramCPAError(f"Telegram API: {data.get('description', 'unknown error')}")
-        result = data.get("result") or {}
-        return int(result.get("member_count", 0))
+        return data.get("result") or {}
+
+    async def get_invite_link_member_count(self, chat_id: Union[int, str], invite_link: str) -> int:
+        """Convenience wrapper kept for callers that only need the count."""
+        info = await self.get_invite_link_info(chat_id, invite_link)
+        return int(info.get("member_count", 0))
+
+    async def is_invite_link_revoked(self, chat_id: Union[int, str], invite_link: str) -> bool:
+        """True if Telegram reports the link as revoked (or it cannot be
+        fetched at all — same effect from the caller's point of view)."""
+        try:
+            info = await self.get_invite_link_info(chat_id, invite_link)
+        except TelegramCPAError as e:
+            # Telegram returns 400 "INVITE_HASH_EXPIRED" / similar for some
+            # revocation cases — treat any explicit refusal as "dead link".
+            logger.warning("[CPA] getChatInviteLink failed: %s", e)
+            return True
+        return bool(info.get("is_revoked"))

@@ -1,8 +1,11 @@
+import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from ..database import get_db
 from ..models.user import User, UserRole
@@ -357,9 +360,6 @@ async def create_invite_link(
         raise HTTPException(status_code=404, detail="Purchase not found")
     if p.type != PurchaseType.ad:
         raise HTTPException(status_code=400, detail="Инвайт-ссылки доступны только для рекламных закупок")
-    if p.invite_link:
-        return InviteLinkResponse(invite_link=p.invite_link)
-
     if not p.channel_id:
         raise HTTPException(status_code=400, detail="Канал не привязан к закупке")
     ch = db.query(Channel).filter(Channel.id == p.channel_id).first()
@@ -382,6 +382,22 @@ async def create_invite_link(
         chat_id = await _resolve_tg_chat_id(db, svc, ch)
     except HTTPException:
         raise
+
+    # If a link is already stored, return it only when Telegram still
+    # considers it valid. Revoked links are silently replaced.
+    if p.invite_link:
+        revoked = await svc.is_invite_link_revoked(chat_id, p.invite_link)
+        if not revoked:
+            return InviteLinkResponse(invite_link=p.invite_link)
+        logger.warning(
+            "Invite link for purchase #%s is revoked — creating a new one", p.id
+        )
+        p.invite_link = None
+        p.joined_count = 0
+        p.cpa_last_member_count = 0
+        p.cpa_synced_at = None
+        db.commit()
+
     try:
         link = await svc.create_invite_link(chat_id, p.id)
     except TelegramCPAError as e:
@@ -429,9 +445,28 @@ async def sync_cpa(
     except HTTPException:
         raise
     try:
-        member_count = await svc.get_invite_link_member_count(chat_id, p.invite_link)
+        info = await svc.get_invite_link_info(chat_id, p.invite_link)
     except TelegramCPAError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+    if info.get("is_revoked"):
+        # The link the row points at is dead. Wipe the stale state so the
+        # UI shows "Создать ссылку" instead of a broken refresh button.
+        logger.warning("Invite link for purchase #%s is revoked", p.id)
+        p.invite_link = None
+        p.joined_count = 0
+        p.cpa_last_member_count = 0
+        p.cpa_synced_at = None
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Инвайт-ссылка отозвана в Telegram. "
+                "Нажмите «Создать ссылку», чтобы сгенерировать новую."
+            ),
+        )
+
+    member_count = int(info.get("member_count", 0))
 
     # `member_count` is the CUMULATIVE total of unique users who joined via
     # this invite link, not a delta. Assign (don't `+=`) so syncing twice

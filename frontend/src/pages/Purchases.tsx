@@ -441,6 +441,11 @@ export function Purchases() {
       if (!res.ok) {
         const d = await res.json()
         toast.error(d.detail ?? 'Ошибка синхронизации CPA')
+        // On revoked-link (400) the server cleared invite_link and
+        // joined_count — refetch so the row reflects the reset.
+        if (res.status === 400) {
+          await loadPurchases()
+        }
         return
       }
       const data = await res.json()
