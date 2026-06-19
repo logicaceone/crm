@@ -203,6 +203,47 @@ def _type_str(t) -> str:
     return t.value if hasattr(t, "value") else str(t)
 
 
+async def _resolve_tg_chat_id(db: Session, svc, ch: Channel) -> int:
+    """Return a numeric Telegram chat_id for the channel, resolving and
+    caching it on first use.
+
+    Order of preference:
+      1. ch.tg_chat_id if already cached (works for public + private)
+      2. Resolve via getChat using @username derived from ch.tg_link,
+         cache result back to ch.tg_chat_id
+
+    Raises HTTPException(400) when there's no way to identify the chat.
+    """
+    if ch.tg_chat_id:
+        return ch.tg_chat_id
+
+    from ..services.telegram_cpa import TelegramCPAError, _extract_username
+    if not ch.tg_link:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Не задан числовой ID канала и нет TG-ссылки — "
+                "укажите Chat ID в настройках канала (нужен для приватных каналов)."
+            ),
+        )
+    username = _extract_username(ch.tg_link)
+    if not username:
+        raise HTTPException(status_code=400, detail="Не удалось определить username канала")
+    try:
+        chat_id = await svc.resolve_chat_id(f"@{username}")
+    except TelegramCPAError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Не удалось получить chat_id из Telegram ({e}). "
+                "Для приватных каналов введите Chat ID вручную в настройках канала."
+            ),
+        )
+    ch.tg_chat_id = chat_id
+    db.commit()
+    return chat_id
+
+
 @router.patch("/{purchase_id}", response_model=AdPurchaseResponse)
 def update_purchase(
     purchase_id: int,
@@ -299,8 +340,6 @@ async def create_invite_link(
     platform = ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform)
     if platform != "telegram":
         raise HTTPException(status_code=400, detail="Инвайт-ссылки через API поддерживаются только для Telegram")
-    if not ch.tg_link:
-        raise HTTPException(status_code=400, detail="У канала не задана TG-ссылка")
 
     from ..db_settings import get_setting
     from ..config import settings as cfg
@@ -311,7 +350,11 @@ async def create_invite_link(
     from ..services.telegram_cpa import TelegramCPAService, TelegramCPAError
     svc = TelegramCPAService(bot_token)
     try:
-        link = await svc.create_invite_link(ch.tg_link, p.id)
+        chat_id = await _resolve_tg_chat_id(db, svc, ch)
+    except HTTPException:
+        raise
+    try:
+        link = await svc.create_invite_link(chat_id, p.id)
     except TelegramCPAError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -343,8 +386,6 @@ async def sync_cpa(
     platform = ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform)
     if platform != "telegram":
         raise HTTPException(status_code=400, detail="Автосинхронизация CPA доступна только для Telegram")
-    if not ch.tg_link:
-        raise HTTPException(status_code=400, detail="У канала не задана TG-ссылка")
 
     from ..db_settings import get_setting
     from ..config import settings as cfg
@@ -352,14 +393,12 @@ async def sync_cpa(
     if not bot_token:
         raise HTTPException(status_code=400, detail="Telegram Bot Token не задан в настройках")
 
-    from ..services.telegram_cpa import TelegramCPAService, TelegramCPAError, _extract_username
-
-    username = _extract_username(ch.tg_link)
-    if not username:
-        raise HTTPException(status_code=400, detail="Не удалось определить username канала")
-    chat_id = f"@{username}"
-
+    from ..services.telegram_cpa import TelegramCPAService, TelegramCPAError
     svc = TelegramCPAService(bot_token)
+    try:
+        chat_id = await _resolve_tg_chat_id(db, svc, ch)
+    except HTTPException:
+        raise
     try:
         member_count = await svc.get_invite_link_member_count(chat_id, p.invite_link)
     except TelegramCPAError as e:

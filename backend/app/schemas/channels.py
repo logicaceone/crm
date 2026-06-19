@@ -19,6 +19,7 @@ class ChannelResponse(BaseModel):
     name: str
     platform: str
     tg_link: Optional[str]
+    tg_chat_id: Optional[int] = None
     description: Optional[str]
     max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None
@@ -44,6 +45,7 @@ class CreateChannelRequest(BaseModel):
     name: str
     platform: str = "telegram"
     tg_link: Optional[str] = None
+    tg_chat_id: Optional[int] = None
     description: Optional[str] = None
     max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None
@@ -54,6 +56,7 @@ class UpdateChannelRequest(BaseModel):
     name: Optional[str] = None
     platform: Optional[str] = None
     tg_link: Optional[str] = None
+    tg_chat_id: Optional[int] = None
     description: Optional[str] = None
     max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None

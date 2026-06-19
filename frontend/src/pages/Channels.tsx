@@ -25,6 +25,7 @@ interface Channel {
   name: string
   platform: 'telegram' | 'max'
   tg_link: string | null
+  tg_chat_id: number | null
   description: string | null
   max_chat_id: number | null
   max_chat_link: string | null
@@ -39,6 +40,7 @@ interface ChannelForm {
   name: string
   platform: 'telegram' | 'max'
   tg_link: string
+  tg_chat_id: string
   description: string
   max_chat_id: string
   max_chat_link: string
@@ -59,7 +61,7 @@ function growthColor(ch: Channel): string {
   return 'inherit'
 }
 
-const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', description: '', max_chat_id: '', max_chat_link: '', max_bot_token: '' }
+const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', tg_chat_id: '', description: '', max_chat_id: '', max_chat_link: '', max_bot_token: '' }
 
 function PlatformBadge({ platform }: { platform: 'telegram' | 'max' }) {
   const isTG = platform === 'telegram'
@@ -141,6 +143,7 @@ export function Channels() {
       }
       if (createForm.platform === 'telegram') {
         body.tg_link = createForm.tg_link || null
+        body.tg_chat_id = createForm.tg_chat_id ? Number(createForm.tg_chat_id) : null
       } else {
         body.max_chat_id = createForm.max_chat_id ? Number(createForm.max_chat_id) : null
         body.max_chat_link = createForm.max_chat_link || null
@@ -170,6 +173,7 @@ export function Channels() {
       name: ch.name,
       platform: ch.platform,
       tg_link: ch.tg_link ?? '',
+      tg_chat_id: ch.tg_chat_id != null ? String(ch.tg_chat_id) : '',
       description: ch.description ?? '',
       max_chat_id: ch.max_chat_id != null ? String(ch.max_chat_id) : '',
       max_chat_link: ch.max_chat_link ?? '',
@@ -193,6 +197,7 @@ export function Channels() {
       }
       if (editForm.platform === 'telegram') {
         body.tg_link = editForm.tg_link || null
+        body.tg_chat_id = editForm.tg_chat_id ? Number(editForm.tg_chat_id) : null
       } else {
         body.max_chat_id = editForm.max_chat_id ? Number(editForm.max_chat_id) : null
         body.max_chat_link = clearChatLink ? null : (editForm.max_chat_link || null)
@@ -443,11 +448,25 @@ function ChannelForm({
       </label>
 
       {!isMax && (
-        <input
-          placeholder="Ссылка Telegram (https://t.me/...)"
-          value={form.tg_link}
-          onChange={e => set({ tg_link: e.target.value })}
-        />
+        <>
+          <input
+            placeholder="Ссылка Telegram (https://t.me/... или @channel)"
+            value={form.tg_link}
+            onChange={e => set({ tg_link: e.target.value })}
+          />
+          <label style={labelStyle}>
+            Chat ID (опционально)
+            <span style={{ fontWeight: 400, color: '#8C7B6E', fontSize: 12 }}>
+              Числовой ID канала. Нужен для приватных каналов и CPA-ссылок.
+              Получить можно через @userinfobot — переслать пост в бот.
+            </span>
+            <input
+              placeholder="-1001234567890"
+              value={form.tg_chat_id}
+              onChange={e => set({ tg_chat_id: e.target.value })}
+            />
+          </label>
+        </>
       )}
 
       {isMax && (

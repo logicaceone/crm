@@ -1,6 +1,6 @@
 import logging
 import httpx
-from typing import Optional
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -90,12 +90,27 @@ class TelegramCPAService:
     def _url(self, method: str) -> str:
         return f"{self._BASE}/bot{self._token}/{method}"
 
-    async def create_invite_link(self, tg_link: str, purchase_id: int) -> str:
-        """Create a named invite link for the channel and return the URL."""
-        username = _extract_username(tg_link)
-        if not username:
-            raise TelegramCPAError("Не удалось определить username канала из tg_link")
-        chat_id = f"@{username}"
+    async def resolve_chat_id(self, identifier: Union[int, str]) -> int:
+        """Resolve a chat identifier (@username or numeric) to numeric chat_id.
+
+        Uses getChat which works for both public and private chats the bot
+        is a member of. Returns the canonical numeric id (negative for
+        channels: -100xxxxxxxx). Raises TelegramCPAError on failure.
+        """
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(self._url("getChat"), params={"chat_id": identifier})
+        data = r.json()
+        if not data.get("ok"):
+            raise TelegramCPAError(f"Telegram API: {data.get('description', 'unknown error')}")
+        result = data.get("result") or {}
+        chat_id = result.get("id")
+        if chat_id is None:
+            raise TelegramCPAError("Telegram getChat вернул ответ без id")
+        return int(chat_id)
+
+    async def create_invite_link(self, chat_id: Union[int, str], purchase_id: int) -> str:
+        """Create a named invite link. chat_id can be numeric (works for both
+        public and private channels) or '@username' (public only)."""
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
                 self._url("createChatInviteLink"),
@@ -106,7 +121,7 @@ class TelegramCPAService:
             raise TelegramCPAError(f"Telegram API: {data.get('description', 'unknown error')}")
         return data["result"]["invite_link"]
 
-    async def get_invite_link_member_count(self, chat_id: str, invite_link: str) -> int:
+    async def get_invite_link_member_count(self, chat_id: Union[int, str], invite_link: str) -> int:
         """Return number of members who joined via the given invite link.
 
         Calls Telegram getChatInviteLink — per-link query, no offset state,

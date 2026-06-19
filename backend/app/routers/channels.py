@@ -127,6 +127,7 @@ def create_channel(
         name=data.name,
         platform=ChannelPlatform(data.platform),
         tg_link=data.tg_link or None,
+        tg_chat_id=data.tg_chat_id or None,
         description=data.description or None,
         max_chat_id=data.max_chat_id or None,
         max_chat_link=canonical_chat_link(max_link_in) if max_link_in else None,

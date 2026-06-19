@@ -18,6 +18,7 @@ class Channel(Base):
     name = Column(String, nullable=False)
     platform = Column(PgEnum(ChannelPlatform, name="channelplatform"), nullable=False, server_default="telegram")
     tg_link = Column(String, nullable=True)
+    tg_chat_id = Column(BigInteger, nullable=True)  # numeric — works for private channels
     description = Column(String, nullable=True)
     max_chat_id = Column(BigInteger, nullable=True)
     max_chat_link = Column(String, nullable=True)
