@@ -36,6 +36,17 @@ interface Channel {
   stat_30d_ago: ChannelStat | null
 }
 
+interface SyncEvent {
+  index: number
+  total: number
+  channel_id: number
+  name: string
+  status: 'ok' | 'error'
+  subscribers?: number
+  avg_views?: number | null
+  error?: string
+}
+
 interface ChannelForm {
   name: string
   platform: 'telegram' | 'max'
@@ -124,6 +135,10 @@ export function Channels() {
 
   const [syncingId, setSyncingId] = useState<number | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
+  const [syncResults, setSyncResults] = useState<SyncEvent[]>([])
+  const syncTimeoutRef = useRef<number | null>(null)
+  const syncEventRef = useRef<EventSource | null>(null)
 
   useEffect(() => { load() }, [page])
 
@@ -278,35 +293,75 @@ export function Channels() {
     }
   }
 
-  async function handleSyncAll() {
-    setSyncingAll(true)
-    try {
-      const res = await apiFetch('/api/channels/sync-all', { method: 'POST' })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        toast.error(d.detail ?? 'Не удалось обновить каналы')
-        return
-      }
-      const data: { synced: number; failed: number; results: Array<{ name: string; status: string; error?: string }> } = await res.json()
-      const total = data.synced + data.failed
-      if (data.failed === 0) {
-        toast.success(`Обновлено ${data.synced} канал${data.synced === 1 ? '' : data.synced < 5 ? 'а' : 'ов'}`)
-      } else if (data.synced > 0) {
-        const failedNames = data.results
-          .filter(r => r.status !== 'ok')
-          .map(r => `${r.name} (${r.error ?? '?'})`)
-          .join('; ')
-        toast.error(`Обновлено ${data.synced} из ${total}. Ошибки: ${failedNames}`)
-      } else {
-        toast.error('Не удалось обновить каналы')
-      }
-      await load()
-    } catch (e) {
-      toast.error('Сетевая ошибка при синхронизации')
-    } finally {
-      setSyncingAll(false)
+  function cleanupSyncStream() {
+    if (syncTimeoutRef.current != null) {
+      window.clearTimeout(syncTimeoutRef.current)
+      syncTimeoutRef.current = null
+    }
+    if (syncEventRef.current) {
+      syncEventRef.current.close()
+      syncEventRef.current = null
     }
   }
+
+  function handleSyncAll() {
+    setSyncingAll(true)
+    setSyncProgress(null)
+    setSyncResults([])
+
+    const es = new EventSource('/api/channels/sync-all/stream', { withCredentials: true })
+    syncEventRef.current = es
+    let finishedCleanly = false
+
+    syncTimeoutRef.current = window.setTimeout(() => {
+      if (finishedCleanly) return
+      cleanupSyncStream()
+      setSyncingAll(false)
+      toast.error('Синхронизация заняла слишком долго')
+    }, 120_000)
+
+    es.onmessage = (event) => {
+      let data: SyncEvent & { done?: boolean; synced?: number; failed?: number }
+      try {
+        data = JSON.parse(event.data)
+      } catch {
+        return
+      }
+      if (data.done) {
+        finishedCleanly = true
+        cleanupSyncStream()
+        setSyncingAll(false)
+        const synced = data.synced ?? 0
+        const failed = data.failed ?? 0
+        const total = data.total ?? synced + failed
+        if (failed === 0) {
+          toast.success(`Обновлено ${synced} из ${total} каналов`)
+        } else if (synced > 0) {
+          toast.error(`Обновлено ${synced} из ${total}. Ошибок: ${failed}`)
+        } else {
+          toast.error('Не удалось обновить каналы')
+        }
+        load()
+        // Keep the progress visible for a moment, then hide.
+        window.setTimeout(() => setSyncProgress(null), 5000)
+        return
+      }
+      setSyncProgress({ current: data.index, total: data.total })
+      setSyncResults(prev => [...prev, data])
+    }
+
+    es.onerror = () => {
+      if (finishedCleanly) return
+      cleanupSyncStream()
+      setSyncingAll(false)
+      toast.error('Соединение прервано')
+    }
+  }
+
+  useEffect(() => {
+    return () => cleanupSyncStream()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (loading) return (
     <div>
@@ -335,7 +390,9 @@ export function Channels() {
                 boxShadow: 'none',
               }}
             >
-              {syncingAll ? '⏳ Обновляем…' : '🔄 Обновить статистику'}
+              {syncingAll
+                ? (syncProgress ? `⏳ Обновляем… (${syncProgress.current}/${syncProgress.total})` : '⏳ Обновляем…')
+                : '🔄 Обновить статистику'}
             </button>
             <button onClick={() => { setShowCreate(true); setCreateForm(emptyForm); setCreateError('') }}>
               + Добавить канал
@@ -343,6 +400,37 @@ export function Channels() {
           </div>
         )}
       </div>
+
+      {syncProgress && (
+        <div style={syncBlockStyle}>
+          <div style={progressBarStyle}>
+            <div style={{
+              ...progressFillStyle,
+              width: `${Math.min(100, (syncProgress.current / syncProgress.total) * 100)}%`,
+            }} />
+          </div>
+          <div style={{ fontSize: 12, color: '#8C7B6E', marginTop: 6 }}>
+            {syncProgress.current} из {syncProgress.total} каналов
+          </div>
+          {syncResults.length > 0 && (
+            <div style={syncLogStyle}>
+              {syncResults.map(r => (
+                <div
+                  key={r.channel_id}
+                  style={{
+                    ...syncLogItemStyle,
+                    color: r.status === 'ok' ? '#16a34a' : '#dc2626',
+                  }}
+                >
+                  {r.status === 'ok'
+                    ? `✓ ${r.name} — ${(r.subscribers ?? 0).toLocaleString('ru-RU')} подп.`
+                    : `✗ ${r.name} — ${r.error ?? 'unknown error'}`}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div ref={tableRef} className="table-scroll"><table style={tableStyle}>
         <thead>
@@ -655,6 +743,40 @@ function ChannelForm({
 }
 
 const headerRowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
+
+const syncBlockStyle: CSSProperties = {
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
+  borderRadius: 8,
+  padding: '12px 16px',
+  marginBottom: 16,
+}
+
+const progressBarStyle: CSSProperties = {
+  width: '100%',
+  height: 6,
+  background: '#F0E8DE',
+  borderRadius: 3,
+  overflow: 'hidden',
+}
+
+const progressFillStyle: CSSProperties = {
+  height: '100%',
+  background: '#C07D4A',
+  transition: 'width 0.25s ease',
+}
+
+const syncLogStyle: CSSProperties = {
+  marginTop: 10,
+  maxHeight: 160,
+  overflowY: 'auto',
+  fontSize: 12,
+  fontFamily: 'monospace',
+}
+
+const syncLogItemStyle: CSSProperties = {
+  padding: '2px 0',
+}
 const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse' }
 
 const thStyle: CSSProperties = {

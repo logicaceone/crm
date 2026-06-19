@@ -1,7 +1,10 @@
+import asyncio
+import json
 from datetime import date, datetime
 from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -255,6 +258,95 @@ async def sync_all_channels(
     log_action(db, current_user, "update", "channel", None,
                f"Массовая синхронизация: {synced} OK, {failed} ошибок")
     return {"synced": synced, "failed": failed, "results": results}
+
+
+@router.get("/sync-all/stream")
+async def sync_all_channels_stream(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(write_access),
+):
+    """Same as POST /channels/sync-all, but streams per-channel results
+    over Server-Sent Events so the UI can show progress in real time.
+
+    Each event payload is JSON:
+      { index, total, channel_id, name, status, subscribers?, error? }
+    A final event includes `done: true` plus aggregate counters.
+    """
+    from ..db_settings import get_setting
+    today = date.today()
+    tg_token = get_setting(db, "telegram_bot_token", settings.telegram_bot_token)
+    channels = db.query(Channel).order_by(Channel.created_at).all()
+    total = len(channels)
+
+    async def event_gen():
+        synced = 0
+        failed = 0
+        for i, ch in enumerate(channels, 1):
+            platform = ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform)
+            try:
+                if platform == "telegram":
+                    if not tg_token:
+                        result = {
+                            "channel_id": ch.id, "name": ch.name,
+                            "status": "error",
+                            "error": "Telegram Bot Token не задан в настройках",
+                        }
+                    else:
+                        result = await _sync_one_tg_channel(db, ch, tg_token, today)
+                elif platform == "max":
+                    if not ch.max_bot_token:
+                        result = {
+                            "channel_id": ch.id, "name": ch.name,
+                            "status": "error",
+                            "error": "Max бот-токен не задан",
+                        }
+                    else:
+                        result = await _sync_one_max_channel(db, ch, today)
+                else:
+                    result = {
+                        "channel_id": ch.id, "name": ch.name,
+                        "status": "error",
+                        "error": f"Unsupported platform: {platform}",
+                    }
+            except Exception as e:
+                db.rollback()
+                result = {
+                    "channel_id": ch.id, "name": ch.name,
+                    "status": "error", "error": str(e),
+                }
+
+            if result.get("status") == "ok":
+                synced += 1
+            else:
+                failed += 1
+
+            payload = {"index": i, "total": total, **result}
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0)  # yield to the event loop
+
+        log_action(
+            db, current_user, "update", "channel", None,
+            f"Массовая синхронизация (stream): {synced} OK, {failed} ошибок",
+        )
+        yield (
+            "data: "
+            + json.dumps(
+                {"done": True, "synced": synced, "failed": failed, "total": total},
+                ensure_ascii=False,
+            )
+            + "\n\n"
+        )
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Disable nginx response buffering for this stream so events
+            # flow client-side as soon as they're yielded.
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("")
