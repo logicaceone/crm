@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, CSSProperties } from 'react'
+import { useState, useEffect, CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../lib/api'
 import { DateRangePicker } from '../components/DateRangePicker'
@@ -19,6 +19,7 @@ interface Summary {
 interface TopChannel {
   id: number
   name: string
+  platform: 'telegram' | 'max'
   tg_link: string | null
   subscribers_current: number
   subscribers_30d_ago: number
@@ -118,8 +119,6 @@ export function Dashboard() {
   const [topChannels, setTopChannels] = useState<TopChannel[]>([])
   const [recentPurchases, setRecentPurchases] = useState<RecentPurchase[]>([])
   const [recentSales, setRecentSales] = useState<RecentSale[]>([])
-  const [audienceData, setAudienceData] = useState<Record<string, unknown>[]>([])
-  const [channelNames, setChannelNames] = useState<Channel[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -146,49 +145,15 @@ export function Dashboard() {
 
   async function loadStatic() {
     setLoading(true)
-    const [topRes, purchRes, saleRes, chanRes] = await Promise.all([
+    const [topRes, purchRes, saleRes] = await Promise.all([
       apiFetch('/api/dashboard/top-channels'),
       apiFetch('/api/dashboard/recent-purchases'),
       apiFetch('/api/dashboard/recent-sales'),
-      apiFetch('/api/channels/all'),
     ])
     if (topRes.ok) setTopChannels(await topRes.json())
     if (purchRes.ok) setRecentPurchases(await purchRes.json())
     if (saleRes.ok) setRecentSales(await saleRes.json())
-
-    if (chanRes.ok) {
-      const channels: Channel[] = await chanRes.json()
-      setChannelNames(channels)
-      loadAudience(channels)
-    }
     setLoading(false)
-  }
-
-  async function loadAudience(channels: Channel[]) {
-    const ago90 = new Date()
-    ago90.setDate(ago90.getDate() - 90)
-    const from = toIso(ago90)
-
-    const results = await Promise.all(
-      channels.map(c =>
-        apiFetch(`/api/channels/${c.id}/stats?from=${from}`)
-          .then(r => r.ok ? r.json() as Promise<ChannelStat[]> : [])
-      )
-    )
-
-    // merge into rows keyed by date
-    const byDate: Record<string, Record<string, unknown>> = {}
-    results.forEach((stats, idx) => {
-      const ch = channels[idx]
-      stats.forEach(s => {
-        if (!byDate[s.date]) byDate[s.date] = { date: s.date }
-        byDate[s.date][ch.name] = s.subscribers_count
-      })
-    })
-    const rows = Object.values(byDate).sort((a, b) =>
-      String(a.date).localeCompare(String(b.date))
-    )
-    setAudienceData(rows)
   }
 
   async function loadSummary(from: string, to: string) {
@@ -268,54 +233,52 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Middle row: top channels + recent activity */}
-      <div className="mid-grid" style={midRowStyle}>
-        {/* Top channels */}
-        <div style={blockStyle}>
-          <h2 style={blockTitleStyle}>Топ каналов по росту (30д)</h2>
-          {topChannels.length === 0 ? (
-            <p style={emptyTextStyle}>Нет данных о снапшотах</p>
-          ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  {['Канал', 'Подписчики', 'Прирост', '%'].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {topChannels.map(ch => (
-                  <tr
-                    key={ch.id}
-                    onClick={() => navigate(`/channels/${ch.id}`)}
-                    style={clickableRowStyle}
-                  >
-                    <td style={tdStyle}>{ch.name}</td>
-                    <td style={tdStyle}>{fmt(ch.subscribers_current)}</td>
-                    <td style={{ ...tdStyle, color: ch.growth >= 0 ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
-                      {ch.growth >= 0 ? '+' : ''}{fmt(ch.growth)}
-                    </td>
-                    <td style={{ ...tdStyle, color: ch.growth >= 0 ? '#16a34a' : '#dc2626' }}>
-                      {ch.growth_pct > 0 ? '+' : ''}{ch.growth_pct.toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+      {/* Top channels — full width, 3-card grid */}
+      <div style={{ ...blockStyle, marginBottom: 16 }}>
+        <h2 style={blockTitleStyle}>Топ каналов по росту (30д)</h2>
+        {topChannels.length === 0 ? (
+          <p style={emptyTextStyle}>Нет данных о снапшотах</p>
+        ) : (
+          <div className="cards-grid-3" style={topGridStyle}>
+            {topChannels.map(ch => (
+              <div
+                key={ch.id}
+                onClick={() => navigate(`/channels/${ch.id}`)}
+                style={topCardStyle}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontWeight: 600, color: '#2C2B28' }}>
+                  <PlatformChip platform={ch.platform} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#2C2B28' }}>{fmt(ch.subscribers_current)}</div>
+                <div style={{ fontSize: 12, color: '#8C7B6E', marginBottom: 6 }}>подписчиков</div>
+                <div style={{
+                  display: 'flex',
+                  gap: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: ch.growth >= 0 ? '#16a34a' : '#dc2626',
+                }}>
+                  <span>{ch.growth >= 0 ? '↑' : '↓'} {ch.growth >= 0 ? '+' : ''}{fmt(ch.growth)}</span>
+                  <span>({ch.growth_pct > 0 ? '+' : ''}{ch.growth_pct.toFixed(1)}%)</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-        {/* Recent purchases */}
-        <div style={blockStyle}>
-          <h2 style={blockTitleStyle}>Последние закупки</h2>
-          {recentPurchases.length === 0 ? (
-            <p style={emptyTextStyle}>Нет закупок</p>
-          ) : (
-            <table style={tableStyle}>
+      {/* Recent purchases — full width */}
+      <div style={{ ...blockStyle, marginBottom: 16 }}>
+        <h2 style={blockTitleStyle}>Последние закупки</h2>
+        {recentPurchases.length === 0 ? (
+          <p style={emptyTextStyle}>Нет закупок</p>
+        ) : (
+          <div className="table-scroll">
+            <table style={fullTableStyle}>
               <thead>
                 <tr>
-                  {['Дата', 'Площадка', 'Сумма', 'Статус'].map(h => (
+                  {['Дата', 'Тип', 'Площадка / Платформа', 'Сумма', 'Статус'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -324,6 +287,9 @@ export function Dashboard() {
                 {recentPurchases.map(p => (
                   <tr key={p.id} onClick={() => navigate('/purchases')} style={clickableRowStyle}>
                     <td style={tdStyle}>{p.date}</td>
+                    <td style={tdStyle}>
+                      <PurchaseTypeBadge type={p.type} />
+                    </td>
                     <td style={tdStyle}>{p.channel_name}</td>
                     <td style={tdStyle}>{fmt(p.price)} {p.currency}</td>
                     <td style={tdStyle}>
@@ -335,19 +301,24 @@ export function Dashboard() {
                 ))}
               </tbody>
             </table>
-          )}
+          </div>
+        )}
+        <div style={blockFooterStyle}>
+          <a onClick={() => navigate('/purchases')} style={blockFooterLinkStyle}>Все закупки →</a>
         </div>
+      </div>
 
-        {/* Recent sales */}
-        <div style={blockStyle}>
-          <h2 style={blockTitleStyle}>Последние продажи</h2>
-          {recentSales.length === 0 ? (
-            <p style={emptyTextStyle}>Нет продаж</p>
-          ) : (
-            <table style={tableStyle}>
+      {/* Recent sales — full width */}
+      <div style={{ ...blockStyle, marginBottom: 16 }}>
+        <h2 style={blockTitleStyle}>Последние продажи</h2>
+        {recentSales.length === 0 ? (
+          <p style={emptyTextStyle}>Нет продаж</p>
+        ) : (
+          <div className="table-scroll">
+            <table style={fullTableStyle}>
               <thead>
                 <tr>
-                  {['Дата', 'Клиент', 'Канал', 'Сумма', 'Статус'].map(h => (
+                  {['Дата', 'Клиент', 'Наш канал', 'Сумма', 'Статус'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -372,12 +343,16 @@ export function Dashboard() {
                 ))}
               </tbody>
             </table>
-          )}
+          </div>
+        )}
+        <div style={blockFooterStyle}>
+          <a onClick={() => navigate('/sales')} style={blockFooterLinkStyle}>Все продажи →</a>
         </div>
       </div>
 
-      {/* Audience table */}
-      <AudienceTable rows={audienceData} channels={channelNames} />
+      {/* Audience tables — TG + MAX as independent blocks */}
+      <AudienceTable platform="telegram" title="Аудитория каналов (90 дней) · Telegram" />
+      <AudienceTable platform="max" title="Аудитория каналов (90 дней) · Max" />
     </div>
   )
 }
@@ -413,6 +388,41 @@ const kpiCardStyle: CSSProperties = {
   padding: '16px 20px',
 }
 
+const topGridStyle: CSSProperties = {
+  gap: 12,
+  marginTop: 8,
+}
+
+const topCardStyle: CSSProperties = {
+  padding: '14px 16px',
+  background: '#FAFAF8',
+  border: '1px solid #E8DDD3',
+  borderRadius: 8,
+  cursor: 'pointer',
+  minWidth: 0,
+}
+
+const fullTableStyle: CSSProperties = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  marginTop: 4,
+}
+
+const blockFooterStyle: CSSProperties = {
+  textAlign: 'right',
+  paddingTop: 12,
+  borderTop: '1px solid #F0E8DE',
+  marginTop: 12,
+}
+
+const blockFooterLinkStyle: CSSProperties = {
+  color: '#C07D4A',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  textDecoration: 'none',
+}
+
 const midRowStyle: CSSProperties = {
   gap: 16,
   marginBottom: 16,
@@ -434,6 +444,24 @@ const chartCardStyle: CSSProperties = {
 }
 
 // ── Audience retention-style table ────────────────────────────────────────────
+
+function PurchaseTypeBadge({ type }: { type: 'ad' | 'target' }) {
+  const isAd = type === 'ad'
+  return (
+    <span style={{
+      display: 'inline-block',
+      fontSize: 11,
+      fontWeight: 600,
+      padding: '2px 8px',
+      borderRadius: 20,
+      background: isAd ? '#FEF3E2' : '#EFF6FF',
+      color: isAd ? '#C07D4A' : '#2563EB',
+      whiteSpace: 'nowrap',
+    }}>
+      {isAd ? 'Реклама' : 'Таргет'}
+    </span>
+  )
+}
 
 function PlatformChip({ platform }: { platform?: 'telegram' | 'max' }) {
   if (!platform) return null
@@ -458,47 +486,51 @@ function PlatformChip({ platform }: { platform?: 'telegram' | 'max' }) {
 }
 
 function AudienceTable({
-  rows,
-  channels,
+  platform,
+  title,
 }: {
-  rows: Record<string, unknown>[]
-  channels: Channel[]
+  platform: 'telegram' | 'max'
+  title: string
 }) {
   const [page, setPage] = useState(1)
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [loading, setLoading] = useState(true)
 
-  // Reset to page 1 whenever the underlying data changes.
-  useEffect(() => { setPage(1) }, [rows.length, channels.length])
-
-  // newest dates first — memoised so pagination doesn't re-sort on every render.
-  const sorted = useMemo(
-    () => [...rows].sort((a, b) => String(b.date).localeCompare(String(a.date))),
-    [rows],
-  )
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / AUDIENCE_PAGE_SIZE))
-  const pageStart = (page - 1) * AUDIENCE_PAGE_SIZE
-  const pageRows = sorted.slice(pageStart, pageStart + AUDIENCE_PAGE_SIZE)
-
-  if (rows.length === 0 || channels.length === 0) {
-    return (
-      <div style={chartCardStyle}>
-        <h2 style={blockTitleStyle}>Аудитория каналов (90 дней)</h2>
-        <p style={emptyTextStyle}>Нет снапшотов за последние 90 дней</p>
-      </div>
-    )
-  }
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    apiFetch(`/api/dashboard/audience-table?platform=${platform}&page=${page}&per_page=${AUDIENCE_PAGE_SIZE}`)
+      .then(async res => {
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+        setChannels(data.channels)
+        setRows(data.rows)
+        setTotal(data.pagination.total)
+        setTotalPages(data.pagination.total_pages)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [platform, page])
 
   function getVal(row: Record<string, unknown>, chName: string): number | null {
     const v = row[chName]
     return typeof v === 'number' ? v : null
   }
 
-  // Compare against the next row in the FULL sorted list so deltas stay
-  // consistent across page boundaries.
-  function getDelta(absoluteIdx: number, chName: string): number | null {
-    if (absoluteIdx >= sorted.length - 1) return null
-    const curr = getVal(sorted[absoluteIdx], chName)
-    const prev = getVal(sorted[absoluteIdx + 1], chName)
+  // The current page comes back already sorted newest-first by the server.
+  // Deltas use the NEXT row in the page; rows beyond the page boundary
+  // don't have a comparable previous value within this view, so the
+  // last row simply has no delta.
+  function getDelta(idx: number, chName: string): number | null {
+    if (idx >= rows.length - 1) return null
+    const curr = getVal(rows[idx], chName)
+    const prev = getVal(rows[idx + 1], chName)
     if (curr == null || prev == null) return null
     return curr - prev
   }
@@ -509,9 +541,32 @@ function AudienceTable({
     return 'rgba(220,38,38,0.07)'
   }
 
+  // Empty platform — show an explanatory empty state but keep the block.
+  if (!loading && channels.length === 0) {
+    const isTg = platform === 'telegram'
+    return (
+      <div style={{ ...chartCardStyle, marginBottom: 16 }}>
+        <h2 style={blockTitleStyle}>{title}</h2>
+        <p style={emptyTextStyle}>
+          {isTg ? 'Нет каналов Telegram. Добавьте канал с платформой Telegram.'
+                : 'Нет каналов Max.ru. Добавьте канал с платформой Max.'}
+        </p>
+      </div>
+    )
+  }
+
+  if (!loading && rows.length === 0) {
+    return (
+      <div style={{ ...chartCardStyle, marginBottom: 16 }}>
+        <h2 style={blockTitleStyle}>{title}</h2>
+        <p style={emptyTextStyle}>Нет снапшотов за последние 90 дней</p>
+      </div>
+    )
+  }
+
   return (
-    <div style={chartCardStyle}>
-      <h2 style={blockTitleStyle}>Аудитория каналов (90 дней)</h2>
+    <div style={{ ...chartCardStyle, marginBottom: 16 }}>
+      <h2 style={blockTitleStyle}>{title}</h2>
       <div style={{ overflowX: 'auto', marginTop: 4 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -526,58 +581,55 @@ function AudienceTable({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((row, i) => {
-              const absoluteIdx = pageStart + i
-              return (
-                <tr key={String(row.date)}>
-                  <td style={audDateStyle}>{String(row.date)}</td>
-                  {channels.map(ch => {
-                    const val = getVal(row, ch.name)
-                    const delta = getDelta(absoluteIdx, ch.name)
-                    return (
-                      <td
-                        key={ch.id}
-                        style={{
-                          padding: '7px 14px',
-                          borderBottom: '1px solid #F0E8DE',
-                          textAlign: 'right',
-                          background: cellBg(delta),
-                          transition: 'background 0.1s',
-                          minWidth: 110,
-                        }}
-                      >
-                        {val != null ? (
-                          <>
-                            <div style={{ fontWeight: 600, color: '#2C2B28' }}>
-                              {fmt(val)}
+            {rows.map((row, i) => (
+              <tr key={String(row.date)}>
+                <td style={audDateStyle}>{String(row.date)}</td>
+                {channels.map(ch => {
+                  const val = getVal(row, ch.name)
+                  const delta = getDelta(i, ch.name)
+                  return (
+                    <td
+                      key={ch.id}
+                      style={{
+                        padding: '7px 14px',
+                        borderBottom: '1px solid #F0E8DE',
+                        textAlign: 'right',
+                        background: cellBg(delta),
+                        transition: 'background 0.1s',
+                        minWidth: 110,
+                      }}
+                    >
+                      {val != null ? (
+                        <>
+                          <div style={{ fontWeight: 600, color: '#2C2B28' }}>
+                            {fmt(val)}
+                          </div>
+                          {delta != null && delta !== 0 && (
+                            <div style={{
+                              fontSize: 11,
+                              color: delta > 0 ? '#16a34a' : '#dc2626',
+                              fontWeight: 500,
+                              marginTop: 1,
+                            }}>
+                              {delta > 0 ? '+' : ''}{fmt(delta)}
                             </div>
-                            {delta != null && delta !== 0 && (
-                              <div style={{
-                                fontSize: 11,
-                                color: delta > 0 ? '#16a34a' : '#dc2626',
-                                fontWeight: 500,
-                                marginTop: 1,
-                              }}>
-                                {delta > 0 ? '+' : ''}{fmt(delta)}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <span style={{ color: '#D4B896' }}>—</span>
-                        )}
-                      </td>
-                    )
-                  })}
-                </tr>
-              )
-            })}
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ color: '#D4B896' }}>—</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
       <Pagination
         page={page}
         total_pages={totalPages}
-        total={sorted.length}
+        total={total}
         per_page={AUDIENCE_PAGE_SIZE}
         onChange={setPage}
       />

@@ -1,11 +1,11 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models.channel import Channel, ChannelStat
+from ..models.channel import Channel, ChannelStat, ChannelPlatform
 from ..models.purchase import AdPurchase, PurchaseStatus
 from ..models.sale import AdSale, SaleStatus
 from ..routers.auth import get_current_user
@@ -99,6 +99,7 @@ def dashboard_top_channels(
         result.append({
             "id": ch.id,
             "name": ch.name,
+            "platform": ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform),
             "tg_link": ch.tg_link,
             "subscribers_current": latest.subscribers_count,
             "subscribers_30d_ago": previous,
@@ -158,3 +159,77 @@ def dashboard_recent_sales(
         }
         for r in rows
     ]
+
+
+@router.get("/audience-table")
+def dashboard_audience_table(
+    platform: str = Query(..., description="telegram or max"),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=15, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Audience snapshots over the last 90 days for a single platform.
+
+    Replaces the previous client-side N+1 (one /channels/{id}/stats call
+    per channel). One query for the platform's channels + one query for
+    their stats, server-side merge and pagination.
+    """
+    if platform not in ("telegram", "max"):
+        raise HTTPException(status_code=400, detail="platform must be telegram or max")
+
+    today = date.today()
+    from_date = today - timedelta(days=90)
+
+    channels = (
+        db.query(Channel)
+        .filter(Channel.platform == ChannelPlatform(platform))
+        .order_by(Channel.created_at)
+        .all()
+    )
+    channel_payload = [
+        {"id": c.id, "name": c.name, "platform": platform}
+        for c in channels
+    ]
+
+    if not channels:
+        return {
+            "channels": [],
+            "rows": [],
+            "pagination": {"page": 1, "per_page": per_page, "total": 0, "total_pages": 1},
+        }
+
+    channel_ids = [c.id for c in channels]
+    stats = (
+        db.query(ChannelStat)
+        .filter(
+            ChannelStat.channel_id.in_(channel_ids),
+            ChannelStat.date >= from_date,
+            ChannelStat.subscribers_count.isnot(None),
+        )
+        .all()
+    )
+
+    name_by_id = {c.id: c.name for c in channels}
+    by_date: dict[str, dict] = {}
+    for s in stats:
+        d = str(s.date)
+        row = by_date.setdefault(d, {"date": d})
+        row[name_by_id[s.channel_id]] = s.subscribers_count
+
+    rows = sorted(by_date.values(), key=lambda r: r["date"], reverse=True)
+    total = len(rows)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    page_rows = rows[(page - 1) * per_page : page * per_page]
+
+    return {
+        "channels": channel_payload,
+        "rows": page_rows,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+        },
+    }
