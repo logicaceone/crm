@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import Optional
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -92,6 +93,168 @@ def list_channels_all(
         }
         for ch in channels
     ]
+
+
+async def _sync_one_tg_channel(
+    db: Session, ch: Channel, bot_token: str, today: date
+) -> dict:
+    """Pull subscriber_count from Telegram for one TG channel, upsert
+    today's ChannelStat. Bot API does not expose avg views, so only
+    subscribers_count is recorded."""
+    chat_id = ch.tg_chat_id
+    if not chat_id and ch.tg_link:
+        from ..services.telegram_cpa import _extract_username
+        username = _extract_username(ch.tg_link)
+        if username:
+            chat_id = f"@{username}"
+    if not chat_id:
+        return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                "error": "Не задан tg_chat_id и нет @username"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"https://api.telegram.org/bot{bot_token}/getChatMemberCount",
+                params={"chat_id": chat_id},
+            )
+        data = r.json()
+    except Exception as e:
+        return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                "error": f"Network: {e}"}
+    if not data.get("ok"):
+        return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                "error": data.get("description", "Telegram error")}
+    count = int(data["result"])
+    existing = (
+        db.query(ChannelStat)
+        .filter(ChannelStat.channel_id == ch.id, ChannelStat.date == today)
+        .first()
+    )
+    if existing:
+        existing.subscribers_count = count
+    else:
+        db.add(ChannelStat(
+            channel_id=ch.id, date=today,
+            subscribers_count=count, avg_views_per_post=None,
+        ))
+    db.commit()
+    update_left_count(db, ch.id)
+    db.commit()
+    return {"channel_id": ch.id, "name": ch.name, "status": "ok",
+            "platform": "telegram", "subscribers": count}
+
+
+async def _sync_one_max_channel(db: Session, ch: Channel, today: date) -> dict:
+    """Pull subscribers + avg_views from Max.ru, upsert today's snapshot."""
+    from ..services.max_parser import (
+        MaxParserService, MaxAuthError, MaxNotFoundError, MaxApiError,
+    )
+    try:
+        svc = MaxParserService(ch.max_bot_token, base_url=settings.max_api_base_url)
+        chat_id = ch.max_chat_id
+        if not chat_id and ch.max_chat_link:
+            chat_id = await svc.resolve_chat_id(ch.max_chat_link)
+            if chat_id:
+                ch.max_chat_id = chat_id
+                db.commit()
+        if not chat_id:
+            return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                    "error": "Не задан max_chat_id"}
+        info = await svc.get_chat_info(chat_id)
+        subscribers = info["subscribers"]
+        if subscribers is None:
+            return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                    "error": "Max API не вернул число подписчиков"}
+        avg_result = await svc.get_avg_views(
+            chat_id, posts_total=info["posts_total"],
+            posts_limit=settings.max_posts_sample,
+        )
+        avg_views = avg_result["avg_views"] if avg_result else None
+        posts_sampled = avg_result["posts_sampled"] if avg_result else None
+        existing = (
+            db.query(ChannelStat)
+            .filter(ChannelStat.channel_id == ch.id, ChannelStat.date == today)
+            .first()
+        )
+        if existing:
+            existing.subscribers_count = subscribers
+            existing.avg_views_per_post = avg_views
+            existing.posts_sampled = posts_sampled
+        else:
+            db.add(ChannelStat(
+                channel_id=ch.id, date=today,
+                subscribers_count=subscribers,
+                avg_views_per_post=avg_views,
+                posts_sampled=posts_sampled,
+            ))
+        db.commit()
+        update_left_count(db, ch.id)
+        db.commit()
+        return {"channel_id": ch.id, "name": ch.name, "status": "ok",
+                "platform": "max", "subscribers": subscribers,
+                "avg_views": avg_views}
+    except MaxAuthError as e:
+        return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                "error": f"Auth: {e}"}
+    except MaxNotFoundError as e:
+        return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                "error": f"Not found: {e}"}
+    except MaxApiError as e:
+        return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                "error": f"API: {e}"}
+    except Exception as e:
+        return {"channel_id": ch.id, "name": ch.name, "status": "error",
+                "error": str(e)}
+
+
+@router.post("/sync-all")
+async def sync_all_channels(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(write_access),
+):
+    """Sync every channel — TG (subscribers via getChatMemberCount) and
+    Max (subscribers + avg_views via MaxParserService). Sequential, so we
+    stay under Max's 30 rps. Per-channel failures don't abort the loop.
+    """
+    from ..db_settings import get_setting
+    today = date.today()
+    tg_token = get_setting(db, "telegram_bot_token", settings.telegram_bot_token)
+    channels = db.query(Channel).order_by(Channel.created_at).all()
+    results = []
+    synced = 0
+    failed = 0
+    for ch in channels:
+        platform = ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform)
+        try:
+            if platform == "telegram":
+                if not tg_token:
+                    result = {"channel_id": ch.id, "name": ch.name,
+                              "status": "error",
+                              "error": "Telegram Bot Token не задан в настройках"}
+                else:
+                    result = await _sync_one_tg_channel(db, ch, tg_token, today)
+            elif platform == "max":
+                if not ch.max_bot_token:
+                    result = {"channel_id": ch.id, "name": ch.name,
+                              "status": "error",
+                              "error": "Max бот-токен не задан"}
+                else:
+                    result = await _sync_one_max_channel(db, ch, today)
+            else:
+                result = {"channel_id": ch.id, "name": ch.name,
+                          "status": "error",
+                          "error": f"Unsupported platform: {platform}"}
+        except Exception as e:
+            db.rollback()
+            result = {"channel_id": ch.id, "name": ch.name,
+                      "status": "error", "error": str(e)}
+        results.append(result)
+        if result.get("status") == "ok":
+            synced += 1
+        else:
+            failed += 1
+    log_action(db, current_user, "update", "channel", None,
+               f"Массовая синхронизация: {synced} OK, {failed} ошибок")
+    return {"synced": synced, "failed": failed, "results": results}
 
 
 @router.get("")

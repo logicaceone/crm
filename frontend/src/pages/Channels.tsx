@@ -63,6 +63,20 @@ function growthColor(ch: Channel): string {
 
 const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', tg_chat_id: '', description: '', max_chat_id: '', max_chat_link: '', max_bot_token: '' }
 
+function statAge(dateStr: string | null | undefined): { label: string; stale: boolean } {
+  if (!dateStr) return { label: 'нет данных', stale: true }
+  // date string is YYYY-MM-DD; midnight local time.
+  const d = new Date(dateStr + 'T00:00:00')
+  if (isNaN(d.getTime())) return { label: dateStr, stale: true }
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const days = Math.floor((today.getTime() - d.getTime()) / 86400000)
+  if (days <= 0) return { label: 'сегодня', stale: false }
+  if (days === 1) return { label: 'вчера', stale: false }
+  // 48h stale threshold ≈ 2 days
+  return { label: `${days} дн назад`, stale: days >= 2 }
+}
+
 function PlatformBadge({ platform }: { platform: 'telegram' | 'max' }) {
   const isTG = platform === 'telegram'
   return (
@@ -109,6 +123,7 @@ export function Channels() {
   const [clearChatLink, setClearChatLink] = useState(false)
 
   const [syncingId, setSyncingId] = useState<number | null>(null)
+  const [syncingAll, setSyncingAll] = useState(false)
 
   useEffect(() => { load() }, [page])
 
@@ -263,6 +278,36 @@ export function Channels() {
     }
   }
 
+  async function handleSyncAll() {
+    setSyncingAll(true)
+    try {
+      const res = await apiFetch('/api/channels/sync-all', { method: 'POST' })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail ?? 'Не удалось обновить каналы')
+        return
+      }
+      const data: { synced: number; failed: number; results: Array<{ name: string; status: string; error?: string }> } = await res.json()
+      const total = data.synced + data.failed
+      if (data.failed === 0) {
+        toast.success(`Обновлено ${data.synced} канал${data.synced === 1 ? '' : data.synced < 5 ? 'а' : 'ов'}`)
+      } else if (data.synced > 0) {
+        const failedNames = data.results
+          .filter(r => r.status !== 'ok')
+          .map(r => `${r.name} (${r.error ?? '?'})`)
+          .join('; ')
+        toast.error(`Обновлено ${data.synced} из ${total}. Ошибки: ${failedNames}`)
+      } else {
+        toast.error('Не удалось обновить каналы')
+      }
+      await load()
+    } catch (e) {
+      toast.error('Сетевая ошибка при синхронизации')
+    } finally {
+      setSyncingAll(false)
+    }
+  }
+
   if (loading) return (
     <div>
       <h1 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 700 }}>Каналы</h1>
@@ -271,16 +316,31 @@ export function Channels() {
   )
   if (error) return <p style={{ color: 'red' }}>{error}</p>
 
-  const colCount = canWrite ? 6 : 5
+  const colCount = canWrite ? 7 : 6
 
   return (
     <div>
       <div style={headerRowStyle}>
         <h1 style={{ margin: 0 }}>Каналы</h1>
         {canWrite && (
-          <button onClick={() => { setShowCreate(true); setCreateForm(emptyForm); setCreateError('') }}>
-            + Добавить канал
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleSyncAll}
+              disabled={syncingAll}
+              style={{
+                background: 'transparent',
+                color: '#2C2B28',
+                border: '1.5px solid #C07D4A',
+                boxShadow: 'none',
+              }}
+            >
+              {syncingAll ? '⏳ Обновляем…' : '🔄 Обновить статистику'}
+            </button>
+            <button onClick={() => { setShowCreate(true); setCreateForm(emptyForm); setCreateError('') }}>
+              + Добавить канал
+            </button>
+          </div>
         )}
       </div>
 
@@ -292,6 +352,7 @@ export function Channels() {
             <th style={thStyle}>Ссылка</th>
             <th style={thStyle}>Подписчики</th>
             <th style={thStyle}>Ср. просмотры</th>
+            <th style={thStyle}>Обновлено</th>
             {canWrite && <th style={thStyle}>Действия</th>}
           </tr>
         </thead>
@@ -330,13 +391,27 @@ export function Channels() {
               <td style={tdStyle}>
                 {ch.last_views_stat?.avg_views_per_post?.toLocaleString() ?? '—'}
               </td>
+              <td style={tdStyle}>
+                {(() => {
+                  const age = statAge(ch.last_subscriber_stat?.date)
+                  return (
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: age.stale ? 600 : 400,
+                        color: age.stale ? '#dc2626' : '#8C7B6E',
+                      }}
+                      title={ch.last_subscriber_stat?.date ?? undefined}
+                    >
+                      {age.label}
+                    </span>
+                  )
+                })()}
+              </td>
               {canWrite && (
                 <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
                   <KebabMenu actions={[
                     { label: 'Редактировать', onClick: () => openEdit(ch) },
-                    ...(ch.platform === 'max' && ch.max_bot_token_set
-                      ? [{ label: syncingId === ch.id ? 'Синхронизация…' : 'Синхронизировать', onClick: () => handleSync(ch), disabled: syncingId === ch.id }]
-                      : []),
                     { label: 'Удалить', onClick: () => handleDelete(ch), danger: true },
                   ]} />
                 </td>
