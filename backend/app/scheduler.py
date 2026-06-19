@@ -104,6 +104,7 @@ async def sync_max_channels() -> None:
     today = date.today()
     synced = 0
     failed = 0
+    skipped_empty = 0
 
     try:
         channels = db.query(Channel).filter(
@@ -135,9 +136,13 @@ async def sync_max_channels() -> None:
                     failed += 1
                     continue
 
+                posts_total = info["posts_total"]
+                if posts_total == 0:
+                    skipped_empty += 1
+
                 avg_result = await svc.get_avg_views(
                     chat_id,
-                    posts_total=info["posts_total"],
+                    posts_total=posts_total,
                     posts_limit=settings.max_posts_sample,
                 )
                 avg_views = avg_result["avg_views"] if avg_result else None
@@ -179,7 +184,11 @@ async def sync_max_channels() -> None:
     finally:
         db.close()
 
-    print(f"[MAX] Sync done: {synced} synced, {failed} failed", flush=True)
+    print(
+        f"[MAX] Sync done: {synced} synced, "
+        f"{skipped_empty} with no posts, {failed} failed",
+        flush=True,
+    )
 
 
 def start_scheduler() -> None:

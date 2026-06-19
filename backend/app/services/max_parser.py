@@ -158,10 +158,24 @@ class MaxParserService:
         Return avg views computed from last `posts_limit` posts.
         Only messages with a `stat` field are included (channel posts).
         Returns None if there are no eligible posts.
+
+        Skips the GET /messages call entirely when posts_total == 0 —
+        we already know the channel has no posts, so the API request
+        would always come back empty (wasted RPS).
+
         Result: {'avg_views': int, 'posts_sampled': int, 'posts_total': int|None}
         """
+        if posts_total == 0:
+            logger.debug("[MAX] chat_id=%s has 0 posts — skipping /messages call", chat_id)
+            return None
+
+        # Don't ask for more posts than the channel actually has.
+        count = posts_limit
+        if posts_total is not None and posts_total > 0:
+            count = min(posts_limit, posts_total)
+
         async with httpx.AsyncClient(timeout=15) as client:
-            data = await self._get(client, "/messages", chat_id=chat_id, count=posts_limit)
+            data = await self._get(client, "/messages", chat_id=chat_id, count=count)
             messages = data.get("messages") or data.get("items") or []
 
         views = []
