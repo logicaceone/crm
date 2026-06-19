@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { apiFetch } from '../lib/api'
+import { DateRangePicker } from '../components/DateRangePicker'
 
 interface ChannelOption {
   id: number
@@ -32,14 +33,34 @@ function toIso(d: Date) {
   return d.toISOString().slice(0, 10)
 }
 
-function presetRange(preset: Preset): { from: string | null; to: string } {
+function presetRange(preset: Preset): { from: string; to: string } {
   const today = new Date()
   const to = toIso(today)
-  if (preset === 'all') return { from: null, to }
+  if (preset === 'all') return { from: '', to }
   const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90
   const from = new Date(today)
   from.setDate(from.getDate() - days)
   return { from: toIso(from), to }
+}
+
+function PlatformChip({ platform }: { platform?: 'telegram' | 'max' }) {
+  if (!platform) return null
+  const isTg = platform === 'telegram'
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: 12,
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: '0.03em',
+      background: isTg ? '#0088cc18' : '#ff000018',
+      color: isTg ? '#0088cc' : '#c0392b',
+      border: `1px solid ${isTg ? '#0088cc44' : '#c0392b44'}`,
+    }}>
+      {isTg ? 'TG' : 'MAX'}
+    </span>
+  )
 }
 
 function formatDate(iso: string) {
@@ -76,10 +97,30 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
 export function Subscribers() {
   const [channels, setChannels] = useState<ChannelOption[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [preset, setPreset] = useState<Preset>('30d')
+  const initial = presetRange('30d')
+  const [dateFrom, setDateFrom] = useState<string>(initial.from)
+  const [dateTo, setDateTo] = useState<string>(initial.to)
+  const [activePreset, setActivePreset] = useState<Preset | null>('30d')
+  const [rangeError, setRangeError] = useState<string | null>(null)
   const [stats, setStats] = useState<StatPoint[]>([])
   const [loading, setLoading] = useState(false)
   const [channelsLoading, setChannelsLoading] = useState(true)
+
+  const selectedChannel = channels.find(c => c.id === selectedId)
+
+  function applyPreset(p: Preset) {
+    const { from, to } = presetRange(p)
+    setDateFrom(from)
+    setDateTo(to)
+    setActivePreset(p)
+    setRangeError(null)
+  }
+
+  function handleRangeChange(from: string, to: string) {
+    setActivePreset(null)
+    setDateFrom(from)
+    setDateTo(to)
+  }
 
   // load channel list once
   useEffect(() => {
@@ -93,12 +134,13 @@ export function Subscribers() {
     })
   }, [])
 
-  // reload stats when channel or preset changes
+  // reload stats when channel or date range changes
   useEffect(() => {
     if (selectedId == null) return
-    const { from, to } = presetRange(preset)
-    const params = new URLSearchParams({ channel_id: String(selectedId), to })
-    if (from) params.set('from', from)
+    if (rangeError) return
+    const params = new URLSearchParams({ channel_id: String(selectedId) })
+    if (dateFrom) params.set('from', dateFrom)
+    if (dateTo) params.set('to', dateTo)
     setLoading(true)
     apiFetch(`/api/stats/subscribers?${params}`).then(async res => {
       if (res.ok) {
@@ -107,7 +149,7 @@ export function Subscribers() {
       }
       setLoading(false)
     })
-  }, [selectedId, preset])
+  }, [selectedId, dateFrom, dateTo, rangeError])
 
   // enrich with growth for tooltip
   const chartData = stats.map((pt, i) => ({
@@ -131,34 +173,48 @@ export function Subscribers() {
 
       {/* controls */}
       <div style={controlsStyle} className="filters-bar">
-        <select
-          value={selectedId ?? ''}
-          onChange={e => setSelectedId(Number(e.target.value))}
-          style={{ minWidth: 220 }}
-        >
-          {channels.map(ch => (
-            <option key={ch.id} value={ch.id}>
-              {ch.platform === 'telegram' ? '[TG]' : '[MAX]'} {ch.name}
-            </option>
-          ))}
-        </select>
-
-        <div style={presetsStyle}>
-          {(['7d', '30d', '90d', 'all'] as Preset[]).map(p => (
-            <button
-              key={p}
-              onClick={() => setPreset(p)}
-              style={{
-                ...presetBtnStyle,
-                background: preset === p ? '#2C2B28' : 'transparent',
-                color: preset === p ? '#F0E8DE' : '#2C2B28',
-                borderColor: preset === p ? '#2C2B28' : '#E8DDD3',
-              }}
-            >
-              {p === 'all' ? 'Всё время' : p === '7d' ? '7 дней' : p === '30d' ? '30 дней' : '90 дней'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <PlatformChip platform={selectedChannel?.platform} />
+          <select
+            value={selectedId ?? ''}
+            onChange={e => setSelectedId(Number(e.target.value))}
+            style={{ minWidth: 200 }}
+          >
+            {channels.map(ch => (
+              <option key={ch.id} value={ch.id}>
+                {ch.platform === 'telegram' ? '[TG]' : '[MAX]'} {ch.name}
+              </option>
+            ))}
+          </select>
         </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 12, color: '#8C7B6E', fontWeight: 500 }}>Период</span>
+          <div style={presetsStyle}>
+            {(['7d', '30d', '90d', 'all'] as Preset[]).map(p => (
+              <button
+                key={p}
+                onClick={() => applyPreset(p)}
+                style={{
+                  ...presetBtnStyle,
+                  background: activePreset === p ? '#2C2B28' : 'transparent',
+                  color: activePreset === p ? '#F0E8DE' : '#2C2B28',
+                  borderColor: activePreset === p ? '#2C2B28' : '#E8DDD3',
+                }}
+              >
+                {p === 'all' ? 'Всё время' : p === '7d' ? '7 дней' : p === '30d' ? '30 дней' : '90 дней'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <DateRangePicker
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={handleRangeChange}
+          onError={setRangeError}
+          error={rangeError}
+        />
       </div>
 
       {/* cards */}
@@ -233,7 +289,7 @@ function Card({ label, value, valueColor }: { label: string; value: string; valu
 const controlsStyle: CSSProperties = {
   display: 'flex',
   gap: 12,
-  alignItems: 'center',
+  alignItems: 'flex-end',
   marginBottom: 20,
   flexWrap: 'wrap',
 }
