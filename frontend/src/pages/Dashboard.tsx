@@ -1,8 +1,11 @@
-import { useState, useEffect, CSSProperties } from 'react'
+import { useState, useEffect, useMemo, CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../lib/api'
 import { DateRangePicker } from '../components/DateRangePicker'
 import { SkeletonKpiGrid, SkeletonTable } from '../components/PageSkeleton'
+import { Pagination } from '../components/Pagination'
+
+const AUDIENCE_PAGE_SIZE = 15
 
 interface Summary {
   income: number
@@ -54,6 +57,7 @@ interface ChannelStat {
 interface Channel {
   id: number
   name: string
+  platform?: 'telegram' | 'max'
 }
 
 type Preset = 'month' | '30d' | '90d'
@@ -431,6 +435,28 @@ const chartCardStyle: CSSProperties = {
 
 // ── Audience retention-style table ────────────────────────────────────────────
 
+function PlatformChip({ platform }: { platform?: 'telegram' | 'max' }) {
+  if (!platform) return null
+  const isTg = platform === 'telegram'
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '1px 6px',
+      borderRadius: 10,
+      fontSize: 9,
+      fontWeight: 700,
+      letterSpacing: '0.04em',
+      verticalAlign: 'middle',
+      marginRight: 5,
+      background: isTg ? '#0088cc18' : '#ff000018',
+      color: isTg ? '#0088cc' : '#c0392b',
+      border: `1px solid ${isTg ? '#0088cc44' : '#c0392b44'}`,
+    }}>
+      {isTg ? 'TG' : 'MAX'}
+    </span>
+  )
+}
+
 function AudienceTable({
   rows,
   channels,
@@ -438,6 +464,21 @@ function AudienceTable({
   rows: Record<string, unknown>[]
   channels: Channel[]
 }) {
+  const [page, setPage] = useState(1)
+
+  // Reset to page 1 whenever the underlying data changes.
+  useEffect(() => { setPage(1) }, [rows.length, channels.length])
+
+  // newest dates first — memoised so pagination doesn't re-sort on every render.
+  const sorted = useMemo(
+    () => [...rows].sort((a, b) => String(b.date).localeCompare(String(a.date))),
+    [rows],
+  )
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / AUDIENCE_PAGE_SIZE))
+  const pageStart = (page - 1) * AUDIENCE_PAGE_SIZE
+  const pageRows = sorted.slice(pageStart, pageStart + AUDIENCE_PAGE_SIZE)
+
   if (rows.length === 0 || channels.length === 0) {
     return (
       <div style={chartCardStyle}>
@@ -447,21 +488,17 @@ function AudienceTable({
     )
   }
 
-  // newest dates first
-  const sorted = [...rows].sort((a, b) =>
-    String(b.date).localeCompare(String(a.date))
-  )
-
   function getVal(row: Record<string, unknown>, chName: string): number | null {
     const v = row[chName]
     return typeof v === 'number' ? v : null
   }
 
-  function getDelta(rowIdx: number, chName: string): number | null {
-    if (rowIdx >= sorted.length - 1) return null
-    const curr = getVal(sorted[rowIdx], chName)
-    // previous in time = next index (since sorted desc)
-    const prev = getVal(sorted[rowIdx + 1], chName)
+  // Compare against the next row in the FULL sorted list so deltas stay
+  // consistent across page boundaries.
+  function getDelta(absoluteIdx: number, chName: string): number | null {
+    if (absoluteIdx >= sorted.length - 1) return null
+    const curr = getVal(sorted[absoluteIdx], chName)
+    const prev = getVal(sorted[absoluteIdx + 1], chName)
     if (curr == null || prev == null) return null
     return curr - prev
   }
@@ -482,57 +519,68 @@ function AudienceTable({
               <th style={audThStyle}>Дата</th>
               {channels.map(ch => (
                 <th key={ch.id} style={{ ...audThStyle, color: '#2C2B28', fontWeight: 600 }}>
+                  <PlatformChip platform={ch.platform} />
                   {ch.name}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row, rowIdx) => (
-              <tr key={String(row.date)}>
-                <td style={audDateStyle}>{String(row.date)}</td>
-                {channels.map(ch => {
-                  const val = getVal(row, ch.name)
-                  const delta = getDelta(rowIdx, ch.name)
-                  return (
-                    <td
-                      key={ch.id}
-                      style={{
-                        padding: '7px 14px',
-                        borderBottom: '1px solid #F0E8DE',
-                        textAlign: 'right',
-                        background: cellBg(delta),
-                        transition: 'background 0.1s',
-                        minWidth: 110,
-                      }}
-                    >
-                      {val != null ? (
-                        <>
-                          <div style={{ fontWeight: 600, color: '#2C2B28' }}>
-                            {fmt(val)}
-                          </div>
-                          {delta != null && delta !== 0 && (
-                            <div style={{
-                              fontSize: 11,
-                              color: delta > 0 ? '#16a34a' : '#dc2626',
-                              fontWeight: 500,
-                              marginTop: 1,
-                            }}>
-                              {delta > 0 ? '+' : ''}{fmt(delta)}
+            {pageRows.map((row, i) => {
+              const absoluteIdx = pageStart + i
+              return (
+                <tr key={String(row.date)}>
+                  <td style={audDateStyle}>{String(row.date)}</td>
+                  {channels.map(ch => {
+                    const val = getVal(row, ch.name)
+                    const delta = getDelta(absoluteIdx, ch.name)
+                    return (
+                      <td
+                        key={ch.id}
+                        style={{
+                          padding: '7px 14px',
+                          borderBottom: '1px solid #F0E8DE',
+                          textAlign: 'right',
+                          background: cellBg(delta),
+                          transition: 'background 0.1s',
+                          minWidth: 110,
+                        }}
+                      >
+                        {val != null ? (
+                          <>
+                            <div style={{ fontWeight: 600, color: '#2C2B28' }}>
+                              {fmt(val)}
                             </div>
-                          )}
-                        </>
-                      ) : (
-                        <span style={{ color: '#D4B896' }}>—</span>
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
+                            {delta != null && delta !== 0 && (
+                              <div style={{
+                                fontSize: 11,
+                                color: delta > 0 ? '#16a34a' : '#dc2626',
+                                fontWeight: 500,
+                                marginTop: 1,
+                              }}>
+                                {delta > 0 ? '+' : ''}{fmt(delta)}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ color: '#D4B896' }}>—</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
+      <Pagination
+        page={page}
+        total_pages={totalPages}
+        total={sorted.length}
+        per_page={AUDIENCE_PAGE_SIZE}
+        onChange={setPage}
+      />
     </div>
   )
 }
