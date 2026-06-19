@@ -147,6 +147,12 @@ export function Channels() {
     const res = await apiFetch(`/api/channels?page=${page}&per_page=${PER_PAGE}`)
     if (res.ok) {
       const data = await res.json()
+      if (data.pagination.total_pages > 0 && page > data.pagination.total_pages) {
+        // Current page no longer exists (last row deleted etc.).
+        // Jump to the new last page — useEffect will re-fetch it.
+        setPage(data.pagination.total_pages)
+        return
+      }
       setChannels(data.items)
       setTotal(data.pagination.total)
       setTotalPages(data.pagination.total_pages)

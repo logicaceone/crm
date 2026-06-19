@@ -226,6 +226,10 @@ export function Purchases() {
     const res = await apiFetch(`/api/purchases${qs}${sep}page=${page}&per_page=${PER_PAGE}`)
     if (res.ok) {
       const data = await res.json()
+      if (data.pagination.total_pages > 0 && page > data.pagination.total_pages) {
+        setPage(data.pagination.total_pages)
+        return
+      }
       setPurchases(data.items)
       setTotal(data.pagination.total)
       setTotalPages(data.pagination.total_pages)

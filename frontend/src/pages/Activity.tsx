@@ -70,6 +70,10 @@ export function Activity() {
     const res = await apiFetch(`/api/activity?${p}`)
     if (res.ok) {
       const data = await res.json()
+      if (data.pagination.total_pages > 0 && page > data.pagination.total_pages) {
+        setPage(data.pagination.total_pages)
+        return
+      }
       setActions(data.items)
       setTotal(data.pagination.total)
       setTotalPages(data.pagination.total_pages)
