@@ -389,7 +389,9 @@ const kpiCardStyle: CSSProperties = {
 }
 
 const topGridStyle: CSSProperties = {
-  gap: 12,
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, 1fr)',
+  gap: 16,
   marginTop: 8,
 }
 
