@@ -24,7 +24,11 @@ SESSION_MAX_AGE = 7 * 24 * 3600  # 7 days
 # logged in.
 _COOKIE_PATH = "/"
 _COOKIE_SAMESITE = "lax"
-_COOKIE_SECURE = False  # flip to True for HTTPS-only deployments
+# Production is HTTPS-only (nginx terminates TLS in front of the API).
+# Setting Secure means the cookie is never sent over plain HTTP, so a
+# downgrade-MITM cannot scrape it. For local dev over plain HTTP, run
+# the app behind an HTTPS proxy or flip this back temporarily.
+_COOKIE_SECURE = True
 
 
 def _serializer() -> URLSafeTimedSerializer:
