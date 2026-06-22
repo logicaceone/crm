@@ -12,7 +12,7 @@ const MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Дашборд', roles: ['root', 'admin', 'manager', 'viewer'] },
   { to: '/subscribers', label: 'Подписчики', roles: ['root', 'admin', 'manager', 'viewer'] },
   { to: '/channels', label: 'Каналы', roles: ['root', 'admin', 'manager'] },
-  { to: '/purchases', label: 'Закупки', roles: ['root', 'admin', 'manager'] },
+  { to: '/expenses', label: 'Расходы', roles: ['root', 'admin', 'manager'] },
   { to: '/sales', label: 'Продажи', roles: ['root', 'admin', 'manager'] },
   { to: '/budget', label: 'Бюджет', roles: ['root', 'admin', 'manager'] },
   { to: '/cpf', label: 'Аналитика CPF', roles: ['root', 'admin', 'manager'] },

@@ -7,12 +7,17 @@ import {
 } from 'recharts'
 import { apiFetch } from '../lib/api'
 
+type ExpenseCategory =
+  | 'tg_ads' | 'vk_ads' | 'yandex' | 'blogger'
+  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'other'
+
 interface Summary {
   expenses: number
   income: number
   margin: number
   margin_pct: number
   currency: string
+  by_category?: Record<string, number>
 }
 
 interface MonthRow {
@@ -20,6 +25,26 @@ interface MonthRow {
   expenses: number
   income: number
   margin: number
+  by_category?: Record<string, number>
+}
+
+const CATEGORY_ORDER: ExpenseCategory[] = [
+  'tg_ads', 'vk_ads', 'yandex', 'blogger',
+  'subscribers', 'lunch', 'giveaway', 'services', 'other',
+]
+
+const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
+  tg_ads: 'TG Ads', vk_ads: 'VK Ads', yandex: 'Яндекс',
+  blogger: 'Блогеры', subscribers: 'Подписчики',
+  lunch: 'Обеды', giveaway: 'Подарки',
+  services: 'Сервисы', other: 'Прочие',
+}
+
+const CATEGORY_COLOR: Record<ExpenseCategory, string> = {
+  tg_ads: '#1D4ED8', vk_ads: '#60A5FA', yandex: '#B45309',
+  blogger: '#6D28D9', subscribers: '#15803D',
+  lunch: '#C2410C', giveaway: '#BE185D',
+  services: '#6B7280', other: '#9CA3AF',
 }
 
 interface Channel {
@@ -191,7 +216,7 @@ export function Budget() {
 
       {noData ? (
         <div style={emptyStyle}>
-          Нет данных за выбранный период. Добавьте закупки или продажи.
+          Нет данных за выбранный период. Добавьте расходы или продажи.
         </div>
       ) : (
         <>
@@ -207,6 +232,39 @@ export function Budget() {
                 <Legend />
                 <Bar dataKey="income" name="Доходы" fill="#16a34a" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="expenses" name="Расходы" fill="#dc2626" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Stacked bar: expenses by category */}
+          <div style={chartCardStyle}>
+            <h3 style={chartTitleStyle}>Расходы по категориям</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart
+                data={monthly.map(m => ({
+                  month: m.month,
+                  ...(CATEGORY_ORDER.reduce<Record<string, number>>((acc, c) => {
+                    acc[c] = m.by_category?.[c] ?? 0
+                    return acc
+                  }, {})),
+                }))}
+                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} width={72} tickFormatter={v => fmt(v)} />
+                <Tooltip formatter={(v) => (typeof v === 'number' ? fmt(v) : v)} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {CATEGORY_ORDER.map((c, idx) => (
+                  <Bar
+                    key={c}
+                    dataKey={c}
+                    name={CATEGORY_LABEL[c]}
+                    stackId="cat"
+                    fill={CATEGORY_COLOR[c]}
+                    radius={idx === CATEGORY_ORDER.length - 1 ? [3, 3, 0, 0] : undefined}
+                  />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           </div>

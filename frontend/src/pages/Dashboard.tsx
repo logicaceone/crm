@@ -13,8 +13,12 @@ interface Summary {
   margin: number
   margin_pct: number
   sales_count: number
-  purchases_count: number
+  expenses_count: number
 }
+
+type ExpenseCategory =
+  | 'tg_ads' | 'vk_ads' | 'yandex' | 'blogger'
+  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'other'
 
 interface TopChannel {
   id: number
@@ -27,14 +31,16 @@ interface TopChannel {
   growth_pct: number
 }
 
-interface RecentPurchase {
+interface RecentExpense {
   id: number
-  type: 'ad' | 'target'
+  category: ExpenseCategory
   date: string
-  channel_name: string
+  external_channel_name: string | null
+  channel_name: string | null
   price: number
   currency: string
   status: string
+  responsible: string | null
 }
 
 interface RecentSale {
@@ -69,10 +75,29 @@ const PRESETS: { label: string; value: Preset }[] = [
   { label: '90 дней', value: '90d' },
 ]
 
-const PURCHASE_STATUS_LABELS: Record<string, string> = {
+const EXPENSE_STATUS_LABELS: Record<string, string> = {
   planned: 'Планируется',
   placed: 'Размещено',
   cancelled: 'Отменено',
+}
+
+const CATEGORY_BADGE_LABEL: Record<ExpenseCategory, string> = {
+  tg_ads: 'TG Ads', vk_ads: 'VK Ads', yandex: 'Яндекс',
+  blogger: 'Блогеры', subscribers: 'Подписчики',
+  lunch: 'Обеды', giveaway: 'Подарки',
+  services: 'Сервисы', other: 'Прочие',
+}
+
+const CATEGORY_BADGE_COLOR: Record<ExpenseCategory, { bg: string; fg: string }> = {
+  tg_ads:      { bg: '#DBEAFE', fg: '#1D4ED8' },
+  vk_ads:      { bg: '#DBEAFE', fg: '#1D4ED8' },
+  yandex:      { bg: '#FEF3C7', fg: '#B45309' },
+  blogger:     { bg: '#EDE9FE', fg: '#6D28D9' },
+  subscribers: { bg: '#DCFCE7', fg: '#15803D' },
+  lunch:       { bg: '#FFEDD5', fg: '#C2410C' },
+  giveaway:    { bg: '#FCE7F3', fg: '#BE185D' },
+  services:    { bg: '#E5E7EB', fg: '#374151' },
+  other:       { bg: '#E5E7EB', fg: '#374151' },
 }
 
 const SALE_STATUS_LABELS: Record<string, string> = {
@@ -117,7 +142,7 @@ export function Dashboard() {
   const [rangeError, setRangeError] = useState<string | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [topChannels, setTopChannels] = useState<TopChannel[]>([])
-  const [recentPurchases, setRecentPurchases] = useState<RecentPurchase[]>([])
+  const [recentExpenses, setRecentExpenses] = useState<RecentExpense[]>([])
   const [recentSales, setRecentSales] = useState<RecentSale[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -145,13 +170,13 @@ export function Dashboard() {
 
   async function loadStatic() {
     setLoading(true)
-    const [topRes, purchRes, saleRes] = await Promise.all([
+    const [topRes, expRes, saleRes] = await Promise.all([
       apiFetch('/api/dashboard/top-channels'),
-      apiFetch('/api/dashboard/recent-purchases'),
+      apiFetch('/api/dashboard/recent-expenses'),
       apiFetch('/api/dashboard/recent-sales'),
     ])
     if (topRes.ok) setTopChannels(await topRes.json())
-    if (purchRes.ok) setRecentPurchases(await purchRes.json())
+    if (expRes.ok) setRecentExpenses(await expRes.json())
     if (saleRes.ok) setRecentSales(await saleRes.json())
     setLoading(false)
   }
@@ -218,7 +243,7 @@ export function Dashboard() {
 
       <div className="kpi-grid" style={cardsRowStyle}>
         <KpiCard label="Доходы" value={summary ? fmt(summary.income) : '—'} currency="₽" accent="#16a34a" sub={`${summary?.sales_count ?? 0} продаж`} />
-        <KpiCard label="Расходы" value={summary ? fmt(summary.expenses) : '—'} currency="₽" accent="#dc2626" sub={`${summary?.purchases_count ?? 0} закупок`} />
+        <KpiCard label="Расходы" value={summary ? fmt(summary.expenses) : '—'} currency="₽" accent="#dc2626" sub={`${summary?.expenses_count ?? 0} расходов`} />
         <KpiCard
           label="Маржа"
           value={summary ? fmt(summary.margin) : '—'}
@@ -268,33 +293,35 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Recent purchases — full width */}
+      {/* Recent expenses — full width */}
       <div style={{ ...blockStyle, marginBottom: 16 }}>
-        <h2 style={blockTitleStyle}>Последние закупки</h2>
-        {recentPurchases.length === 0 ? (
-          <p style={emptyTextStyle}>Нет закупок</p>
+        <h2 style={blockTitleStyle}>Последние расходы</h2>
+        {recentExpenses.length === 0 ? (
+          <p style={emptyTextStyle}>Нет расходов</p>
         ) : (
           <div className="table-scroll">
             <table style={fullTableStyle}>
               <thead>
                 <tr>
-                  {['Дата', 'Тип', 'Площадка / Платформа', 'Сумма', 'Статус'].map(h => (
+                  {['Дата', 'Категория', 'Площадка / Канал', 'Сумма', 'Статус'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {recentPurchases.map(p => (
-                  <tr key={p.id} onClick={() => navigate('/purchases')} style={clickableRowStyle}>
-                    <td style={tdStyle}>{p.date}</td>
+                {recentExpenses.map(e => (
+                  <tr key={e.id} onClick={() => navigate('/expenses')} style={clickableRowStyle}>
+                    <td style={tdStyle}>{e.date}</td>
                     <td style={tdStyle}>
-                      <PurchaseTypeBadge type={p.type} />
+                      <CategoryBadge category={e.category} />
                     </td>
-                    <td style={tdStyle}>{p.channel_name}</td>
-                    <td style={tdStyle}>{fmt(p.price)} {p.currency}</td>
+                    <td style={tdStyle}>
+                      {e.external_channel_name || e.channel_name || '—'}
+                    </td>
+                    <td style={tdStyle}>{fmt(e.price)} {e.currency}</td>
                     <td style={tdStyle}>
                       <span style={{ fontSize: 12, color: '#2C2B28' }}>
-                        {PURCHASE_STATUS_LABELS[p.status] ?? p.status}
+                        {EXPENSE_STATUS_LABELS[e.status] ?? e.status}
                       </span>
                     </td>
                   </tr>
@@ -304,7 +331,7 @@ export function Dashboard() {
           </div>
         )}
         <div style={blockFooterStyle}>
-          <a onClick={() => navigate('/purchases')} style={blockFooterLinkStyle}>Все закупки →</a>
+          <a onClick={() => navigate('/expenses')} style={blockFooterLinkStyle}>Все расходы →</a>
         </div>
       </div>
 
@@ -447,8 +474,8 @@ const chartCardStyle: CSSProperties = {
 
 // ── Audience retention-style table ────────────────────────────────────────────
 
-function PurchaseTypeBadge({ type }: { type: 'ad' | 'target' }) {
-  const isAd = type === 'ad'
+function CategoryBadge({ category }: { category: ExpenseCategory }) {
+  const col = CATEGORY_BADGE_COLOR[category]
   return (
     <span style={{
       display: 'inline-block',
@@ -456,11 +483,11 @@ function PurchaseTypeBadge({ type }: { type: 'ad' | 'target' }) {
       fontWeight: 600,
       padding: '2px 8px',
       borderRadius: 20,
-      background: isAd ? '#FEF3E2' : '#EFF6FF',
-      color: isAd ? '#C07D4A' : '#2563EB',
+      background: col.bg,
+      color: col.fg,
       whiteSpace: 'nowrap',
     }}>
-      {isAd ? 'Реклама' : 'Таргет'}
+      {CATEGORY_BADGE_LABEL[category]}
     </span>
   )
 }

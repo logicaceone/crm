@@ -9,7 +9,7 @@ import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Channels } from './pages/Channels'
 import { ChannelDetail } from './pages/ChannelDetail'
-import { Purchases } from './pages/Purchases'
+import { Expenses } from './pages/Expenses'
 import { Sales } from './pages/Sales'
 import { Budget } from './pages/Budget'
 import { Users } from './pages/Users'
@@ -66,10 +66,10 @@ export default function App() {
               }
             />
             <Route
-              path="/purchases"
+              path="/expenses"
               element={
                 <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
-                  <Purchases />
+                  <Expenses />
                 </RoleRoute>
               }
             />

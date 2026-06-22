@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User, UserRole
 from ..models.channel import Channel
-from ..models.purchase import AdPurchase, ExternalChannel, PurchaseStatus, PurchaseType
+from ..models.expense import (
+    Expense,
+    ExternalChannel,
+    ExpenseStatus,
+    ExpenseCategory,
+    CPA_CATEGORIES,
+)
 from .auth import require_roles
 
 router = APIRouter(prefix="/cpf", tags=["cpf"])
@@ -28,22 +34,16 @@ def cpf_summary(
     db: Session = Depends(get_db),
     _: User = Depends(cpf_access),
 ):
-    """CPF per channel for the period.
-
-    spent  = SUM(price)        over status='placed' purchases in [from,to]
-    joined = SUM(joined_count) over the same set
-    cpf    = spent / joined    (NULL when joined = 0)
-
-    Sorted by cpf ASC, channels with joined=0 last.
-    """
+    """CPF per channel — only CPA-category expenses contribute."""
     date_from, date_to = _default_range(from_, to)
+    cpa_cats = list(CPA_CATEGORIES)
 
-    spent_sum = func.coalesce(func.sum(AdPurchase.price), 0).label("spent")
-    joined_sum = func.coalesce(func.sum(AdPurchase.joined_count), 0).label("joined")
+    spent_sum = func.coalesce(func.sum(Expense.price), 0).label("spent")
+    joined_sum = func.coalesce(func.sum(Expense.joined_count), 0).label("joined")
     cpf_expr = case(
         (joined_sum == 0, None),
         else_=func.round(
-            (func.sum(AdPurchase.price) / func.sum(AdPurchase.joined_count)).cast(Numeric),
+            (func.sum(Expense.price) / func.sum(Expense.joined_count)).cast(Numeric),
             2,
         ),
     ).label("cpf")
@@ -58,14 +58,14 @@ def cpf_summary(
             cpf_expr,
         )
         .outerjoin(
-            AdPurchase,
-            (AdPurchase.channel_id == Channel.id)
-            & (AdPurchase.status == PurchaseStatus.placed)
-            & (AdPurchase.date >= date_from)
-            & (AdPurchase.date <= date_to),
+            Expense,
+            (Expense.channel_id == Channel.id)
+            & (Expense.status == ExpenseStatus.placed)
+            & (Expense.category.in_(cpa_cats))
+            & (Expense.date >= date_from)
+            & (Expense.date <= date_to),
         )
         .group_by(Channel.id, Channel.name, Channel.platform)
-        # NULLS LAST is Postgres-specific; the project targets PG (postgres:15).
         .order_by(cpf_expr.asc().nullslast())
         .all()
     )
@@ -91,28 +91,27 @@ def cpf_by_channel(
     db: Session = Depends(get_db),
     _: User = Depends(cpf_access),
 ):
-    """CPF for one channel, grouped by source (external_channel.name for
-    type=ad, target_platform for type=target).
-
-    Aggregates and the channel-level totals are computed in SQL.
-    """
+    """CPF for one channel, grouped by category. For blogger spend each
+    external_channel becomes its own row, since the actual ad platform
+    (the blogger's TG channel) is the meaningful breakdown there."""
     ch = db.query(Channel).filter(Channel.id == channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
 
     date_from, date_to = _default_range(from_, to)
+    cpa_cats = list(CPA_CATEGORIES)
 
     source_name = case(
-        (AdPurchase.type == PurchaseType.ad, ExternalChannel.name),
-        else_=AdPurchase.target_platform,
+        (Expense.category == ExpenseCategory.blogger, ExternalChannel.name),
+        else_=None,
     ).label("source_name")
 
-    spent_sum = func.coalesce(func.sum(AdPurchase.price), 0).label("spent")
-    joined_sum = func.coalesce(func.sum(AdPurchase.joined_count), 0).label("joined")
+    spent_sum = func.coalesce(func.sum(Expense.price), 0).label("spent")
+    joined_sum = func.coalesce(func.sum(Expense.joined_count), 0).label("joined")
     cpf_expr = case(
         (joined_sum == 0, None),
         else_=func.round(
-            (func.sum(AdPurchase.price) / func.sum(AdPurchase.joined_count)).cast(Numeric),
+            (func.sum(Expense.price) / func.sum(Expense.joined_count)).cast(Numeric),
             2,
         ),
     ).label("cpf")
@@ -120,36 +119,35 @@ def cpf_by_channel(
     rows = (
         db.query(
             source_name,
-            AdPurchase.type.label("source_type"),
+            Expense.category.label("category"),
             spent_sum,
             joined_sum,
             cpf_expr,
         )
-        .outerjoin(ExternalChannel, ExternalChannel.id == AdPurchase.external_channel_id)
+        .outerjoin(ExternalChannel, ExternalChannel.id == Expense.external_channel_id)
         .filter(
-            AdPurchase.channel_id == channel_id,
-            AdPurchase.status == PurchaseStatus.placed,
-            AdPurchase.date >= date_from,
-            AdPurchase.date <= date_to,
+            Expense.channel_id == channel_id,
+            Expense.status == ExpenseStatus.placed,
+            Expense.category.in_(cpa_cats),
+            Expense.date >= date_from,
+            Expense.date <= date_to,
         )
-        .group_by(source_name, AdPurchase.type)
+        .group_by(source_name, Expense.category)
         .order_by(cpf_expr.asc().nullslast())
         .all()
     )
 
-    # Channel-level totals in a single aggregate query — never iterate
-    # rows in Python to derive them, otherwise rounding of per-source
-    # CPF would skew the channel CPF.
     total_row = (
         db.query(
-            func.coalesce(func.sum(AdPurchase.price), 0).label("spent"),
-            func.coalesce(func.sum(AdPurchase.joined_count), 0).label("joined"),
+            func.coalesce(func.sum(Expense.price), 0).label("spent"),
+            func.coalesce(func.sum(Expense.joined_count), 0).label("joined"),
         )
         .filter(
-            AdPurchase.channel_id == channel_id,
-            AdPurchase.status == PurchaseStatus.placed,
-            AdPurchase.date >= date_from,
-            AdPurchase.date <= date_to,
+            Expense.channel_id == channel_id,
+            Expense.status == ExpenseStatus.placed,
+            Expense.category.in_(cpa_cats),
+            Expense.date >= date_from,
+            Expense.date <= date_to,
         )
         .one()
     )
@@ -168,7 +166,7 @@ def cpf_by_channel(
         },
         "rows": [
             {
-                "source_type": (r.source_type.value if hasattr(r.source_type, "value") else str(r.source_type)),
+                "category": (r.category.value if hasattr(r.category, "value") else str(r.category)),
                 "source_name": r.source_name or "—",
                 "spent": float(r.spent or 0),
                 "joined": int(r.joined or 0),

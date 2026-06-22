@@ -17,7 +17,7 @@ from .rate_limit import limiter, get_real_ip
 from .routers import auth, users, channels
 
 logger = logging.getLogger(__name__)
-from .routers.purchases import router as purchases_router, router_ext as ext_channels_router
+from .routers.expenses import router as expenses_router, router_ext as ext_channels_router
 from .routers.sales import router as sales_router
 from .routers.budget import router as budget_router
 from .routers.dashboard import router as dashboard_router
@@ -151,7 +151,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(channels.router)
 app.include_router(ext_channels_router)
-app.include_router(purchases_router)
+app.include_router(expenses_router)
 app.include_router(sales_router)
 app.include_router(budget_router)
 app.include_router(dashboard_router)
@@ -166,9 +166,8 @@ app.include_router(cpf_router)
 # catches anything that slips through (raw API misuse, race conditions,
 # future code that forgets a validator).
 _CONSTRAINT_MESSAGES: dict[str, str] = {
-    "ck_purchase_invite_link_type": "invite_link is not allowed for type=target",
-    "ck_purchase_target_platform": "target_platform is required for type=target",
-    "ck_purchase_ad_channel": "external_channel_id is required for type=ad",
+    "ck_expense_blogger_channel": "Укажите площадку для категории «Реклама у блогеров»",
+    "ck_expense_cpa_invite_link": "Инвайт-ссылка недоступна для этой категории",
     "uq_channel_stat_channel_date": "Snapshot for this channel and date already exists",
 }
 

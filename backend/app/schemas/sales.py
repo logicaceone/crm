@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel
-from ..models.purchase import AdFormat
+from ..models.expense import AdFormat
 from ..models.sale import SaleStatus
 
 

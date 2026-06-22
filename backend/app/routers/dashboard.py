@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.channel import Channel, ChannelStat, ChannelPlatform
-from ..models.purchase import AdPurchase, PurchaseStatus
+from ..models.expense import Expense, ExpenseStatus
 from ..models.sale import AdSale, SaleStatus
 from ..routers.auth import get_current_user
 from ..models.user import User
@@ -24,13 +24,13 @@ def dashboard_summary(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    exp_q = db.query(func.coalesce(func.sum(AdPurchase.price), 0)).filter(
-        AdPurchase.status == PurchaseStatus.placed
+    exp_q = db.query(func.coalesce(func.sum(Expense.price), 0)).filter(
+        Expense.status == ExpenseStatus.placed
     )
     if from_:
-        exp_q = exp_q.filter(AdPurchase.date >= from_)
+        exp_q = exp_q.filter(Expense.date >= from_)
     if to:
-        exp_q = exp_q.filter(AdPurchase.date <= to)
+        exp_q = exp_q.filter(Expense.date <= to)
     expenses: float = float(exp_q.scalar())
 
     inc_q = db.query(func.coalesce(func.sum(AdSale.price), 0)).filter(
@@ -49,12 +49,12 @@ def dashboard_summary(
         sales_count_q = sales_count_q.filter(AdSale.date <= to)
     sales_count: int = sales_count_q.scalar()
 
-    purchases_count_q = db.query(func.count(AdPurchase.id))
+    expenses_count_q = db.query(func.count(Expense.id))
     if from_:
-        purchases_count_q = purchases_count_q.filter(AdPurchase.date >= from_)
+        expenses_count_q = expenses_count_q.filter(Expense.date >= from_)
     if to:
-        purchases_count_q = purchases_count_q.filter(AdPurchase.date <= to)
-    purchases_count: int = purchases_count_q.scalar()
+        expenses_count_q = expenses_count_q.filter(Expense.date <= to)
+    expenses_count: int = expenses_count_q.scalar()
 
     margin = income - expenses
     margin_pct = (margin / income * 100) if income else 0.0
@@ -65,7 +65,7 @@ def dashboard_summary(
         "margin": round(margin, 2),
         "margin_pct": round(margin_pct, 2),
         "sales_count": sales_count,
-        "purchases_count": purchases_count,
+        "expenses_count": expenses_count,
     }
 
 
@@ -111,26 +111,28 @@ def dashboard_top_channels(
     return result[:limit]
 
 
-@router.get("/recent-purchases")
-def dashboard_recent_purchases(
+@router.get("/recent-expenses")
+def dashboard_recent_expenses(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     rows = (
-        db.query(AdPurchase)
-        .order_by(AdPurchase.created_at.desc())
+        db.query(Expense)
+        .order_by(Expense.created_at.desc())
         .limit(5)
         .all()
     )
     return [
         {
             "id": r.id,
-            "type": r.type.value if hasattr(r.type, "value") else str(r.type),
+            "category": r.category.value if hasattr(r.category, "value") else str(r.category),
             "date": str(r.date),
-            "channel_name": r.external_channel.name if r.external_channel else (r.target_platform or "—"),
+            "external_channel_name": r.external_channel.name if r.external_channel else None,
+            "channel_name": r.channel.name if r.channel else None,
             "price": r.price,
             "currency": r.currency,
             "status": r.status.value,
+            "responsible": r.responsible,
         }
         for r in rows
     ]

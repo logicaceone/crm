@@ -16,12 +16,35 @@ interface SummaryRow {
   cpf: number | null
 }
 
+type ExpenseCategory =
+  | 'tg_ads' | 'vk_ads' | 'yandex' | 'blogger'
+  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'other'
+
 interface ByChannelRow {
-  source_type: 'ad' | 'target'
+  category: ExpenseCategory
   source_name: string
   spent: number
   joined: number
   cpf: number | null
+}
+
+const CATEGORY_LABEL_SHORT: Record<ExpenseCategory, string> = {
+  tg_ads: 'TG Ads', vk_ads: 'VK Ads', yandex: 'Яндекс',
+  blogger: 'Блогеры', subscribers: 'Подписчики',
+  lunch: 'Обеды', giveaway: 'Подарки',
+  services: 'Сервисы', other: 'Прочие',
+}
+
+const CATEGORY_BADGE: Record<ExpenseCategory, { bg: string; fg: string }> = {
+  tg_ads:      { bg: '#DBEAFE', fg: '#1D4ED8' },
+  vk_ads:      { bg: '#DBEAFE', fg: '#1D4ED8' },
+  yandex:      { bg: '#FEF3C7', fg: '#B45309' },
+  blogger:     { bg: '#EDE9FE', fg: '#6D28D9' },
+  subscribers: { bg: '#DCFCE7', fg: '#15803D' },
+  lunch:       { bg: '#FFEDD5', fg: '#C2410C' },
+  giveaway:    { bg: '#FCE7F3', fg: '#BE185D' },
+  services:    { bg: '#E5E7EB', fg: '#374151' },
+  other:       { bg: '#E5E7EB', fg: '#374151' },
 }
 
 interface ByChannelResponse {
@@ -78,8 +101,8 @@ function PlatformChip({ platform }: { platform: Platform }) {
   )
 }
 
-function SourceTypeChip({ type }: { type: 'ad' | 'target' }) {
-  const isAd = type === 'ad'
+function CategoryChip({ category }: { category: ExpenseCategory }) {
+  const c = CATEGORY_BADGE[category]
   return (
     <span style={{
       display: 'inline-block',
@@ -87,10 +110,10 @@ function SourceTypeChip({ type }: { type: 'ad' | 'target' }) {
       borderRadius: 12,
       fontSize: 11,
       fontWeight: 600,
-      background: isAd ? '#dbeafe' : '#fef3c7',
-      color: isAd ? '#1d4ed8' : '#92400e',
+      background: c.bg,
+      color: c.fg,
     }}>
-      {isAd ? 'Реклама' : 'Таргет'}
+      {CATEGORY_LABEL_SHORT[category]}
     </span>
   )
 }
@@ -429,7 +452,7 @@ function ByChannelBlock() {
         <SkeletonTable rows={6} cols={5} />
       ) : !data || data.rows.length === 0 ? (
         <div style={emptyStyle}>
-          Нет закупок с CPA-данными за выбранный период. Убедитесь что у закупок
+          Нет расходов с CPA-данными за выбранный период. Убедитесь что у CPA-расходов
           заполнено поле joined_count.
         </div>
       ) : (
@@ -438,16 +461,16 @@ function ByChannelBlock() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  {['Площадка/Источник', 'Тип', 'Расходы', 'Подписалось', 'CPF'].map(h => (
+                  {['Площадка/Источник', 'Категория', 'Расходы', 'Подписалось', 'CPF'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((r, i) => (
-                  <tr key={`${r.source_type}-${r.source_name}-${i}`}>
+                  <tr key={`${r.category}-${r.source_name}-${i}`}>
                     <td style={tdStyle}>{r.source_name}</td>
-                    <td style={tdStyle}><SourceTypeChip type={r.source_type} /></td>
+                    <td style={tdStyle}><CategoryChip category={r.category} /></td>
                     <td style={tdStyle}>{fmtMoney(r.spent)} ₽</td>
                     <td style={tdStyle}>{fmtMoney(r.joined)}</td>
                     <td style={{ ...tdStyle, fontWeight: 600 }}>

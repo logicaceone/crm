@@ -29,7 +29,8 @@ const ACTION_COLORS: Record<string, string> = {
 }
 
 const ENTITY_LABELS: Record<string, string> = {
-  purchase: 'Закупка',
+  expense: 'Расход',
+  purchase: 'Закупка',  // legacy log entries
   sale: 'Продажа',
   channel: 'Канал',
   channel_stat: 'Снапшот',
@@ -115,7 +116,7 @@ export function Activity() {
           style={filterStyle}
         >
           <option value="">Все типы</option>
-          <option value="purchase">Закупки</option>
+          <option value="expense">Расходы</option>
           <option value="sale">Продажи</option>
           <option value="channel">Каналы</option>
           <option value="channel_stat">Снапшоты</option>

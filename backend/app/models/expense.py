@@ -1,23 +1,40 @@
 import enum
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text, BigInteger, CheckConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text, CheckConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
 
 
-class PurchaseType(str, enum.Enum):
-    ad = "ad"
-    target = "target"
+class ExpenseCategory(str, enum.Enum):
+    tg_ads = "tg_ads"
+    vk_ads = "vk_ads"
+    yandex = "yandex"
+    blogger = "blogger"
+    subscribers = "subscribers"
+    lunch = "lunch"
+    giveaway = "giveaway"
+    services = "services"
+    other = "other"
+
+
+CPA_CATEGORIES = frozenset({
+    ExpenseCategory.tg_ads,
+    ExpenseCategory.vk_ads,
+    ExpenseCategory.yandex,
+    ExpenseCategory.blogger,
+})
 
 
 class AdFormat(str, enum.Enum):
+    """Still used by Sale.format. Lives here because the original `purchase.py`
+    is gone; sales kept their format dimension."""
     post = "post"
     repost = "repost"
     integration = "integration"
     other = "other"
 
 
-class PurchaseStatus(str, enum.Enum):
+class ExpenseStatus(str, enum.Enum):
     planned = "planned"
     placed = "placed"
     cancelled = "cancelled"
@@ -31,60 +48,52 @@ class ExternalChannel(Base):
     tg_link = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    purchases = relationship("AdPurchase", back_populates="external_channel")
+    expenses = relationship("Expense", back_populates="external_channel")
 
 
-class AdPurchase(Base):
-    __tablename__ = "ad_purchases"
+class Expense(Base):
+    __tablename__ = "expenses"
 
     id = Column(Integer, primary_key=True, index=True)
-    type = Column(
-        Enum(PurchaseType, name="purchase_type"),
+    category = Column(
+        Enum(ExpenseCategory, name="expense_category"),
         nullable=False,
-        default=PurchaseType.ad,
-        server_default="ad",
     )
-    # Ad-specific (nullable for target)
     external_channel_id = Column(Integer, ForeignKey("external_channels.id"), nullable=True, index=True)
-    format = Column(Enum(AdFormat, name="ad_format"), nullable=True)
-    # Target-specific
-    target_platform = Column(String, nullable=True)
-    # Common
     date = Column(Date, nullable=False)
     price = Column(Float, nullable=False)
     currency = Column(String(10), nullable=False, default="RUB", server_default="RUB")
-    status = Column(Enum(PurchaseStatus, name="purchase_status"), nullable=False, default=PurchaseStatus.planned, server_default="planned")
+    status = Column(
+        Enum(ExpenseStatus, name="expense_status"),
+        nullable=False,
+        default=ExpenseStatus.planned,
+        server_default="planned",
+    )
     comment = Column(Text, nullable=True)
-    # CPA tracking (ad+telegram only)
+    responsible = Column(String, nullable=True)
+    # CPA tracking — only for CPA categories (tg_ads/vk_ads/yandex/blogger)
     channel_id = Column(Integer, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True, index=True)
     invite_link = Column(String, nullable=True)
     joined_count = Column(Integer, nullable=False, default=0, server_default="0")
     left_count = Column(Integer, nullable=False, default=0, server_default="0")
     cpa_synced_at = Column(DateTime(timezone=True), nullable=True)
-    # Last value of member_count returned by Telegram getChatInviteLink.
-    # Stored to detect deltas between syncs (current - previous = new joins).
-    # joined_count is always assigned to the current member_count — the
-    # `+=` accumulation pattern from older drafts would inflate on every sync.
     cpa_last_member_count = Column(Integer, nullable=False, default=0, server_default="0")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    external_channel = relationship("ExternalChannel", back_populates="purchases")
+    external_channel = relationship("ExternalChannel", back_populates="expenses")
     channel = relationship("Channel", foreign_keys=[channel_id])
     creator = relationship("User")
 
     __table_args__ = (
         CheckConstraint(
-            "type <> 'target' OR target_platform IS NOT NULL",
-            name="ck_purchase_target_platform",
+            "category <> 'blogger' OR external_channel_id IS NOT NULL",
+            name="ck_expense_blogger_channel",
         ),
         CheckConstraint(
-            "type <> 'ad' OR external_channel_id IS NOT NULL",
-            name="ck_purchase_ad_channel",
-        ),
-        CheckConstraint(
-            "invite_link IS NULL OR type = 'ad'",
-            name="ck_purchase_invite_link_type",
+            "invite_link IS NULL OR category IN "
+            "('tg_ads','vk_ads','yandex','blogger')",
+            name="ck_expense_cpa_invite_link",
         ),
     )

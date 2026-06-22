@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel
-from ..models.purchase import AdFormat, PurchaseStatus, PurchaseType
+from ..models.expense import ExpenseCategory, ExpenseStatus
 
 
 class ExternalChannelResponse(BaseModel):
@@ -33,20 +33,19 @@ class ChannelRef(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class AdPurchaseResponse(BaseModel):
+class ExpenseResponse(BaseModel):
     id: int
-    type: PurchaseType
+    category: ExpenseCategory
     external_channel_id: Optional[int] = None
     external_channel: Optional[ExternalChannelResponse] = None
-    target_platform: Optional[str] = None
     channel_id: Optional[int] = None
     channel: Optional[ChannelRef] = None
     date: date
     price: float
     currency: str
-    format: Optional[AdFormat] = None
-    status: PurchaseStatus
+    status: ExpenseStatus
     comment: Optional[str]
+    responsible: Optional[str] = None
     invite_link: Optional[str] = None
     joined_count: int = 0
     left_count: int = 0
@@ -58,34 +57,29 @@ class AdPurchaseResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CreatePurchaseRequest(BaseModel):
-    type: PurchaseType = PurchaseType.ad
-    # Ad fields
+class CreateExpenseRequest(BaseModel):
+    category: ExpenseCategory
     external_channel_id: Optional[int] = None
-    format: Optional[AdFormat] = None
-    # Target fields
-    target_platform: Optional[str] = None
-    # Common
     channel_id: Optional[int] = None
     date: date
     price: float
     currency: str = "RUB"
-    status: PurchaseStatus = PurchaseStatus.planned
+    status: ExpenseStatus = ExpenseStatus.planned
     comment: Optional[str] = None
+    responsible: Optional[str] = None
     invite_link: Optional[str] = None
 
 
-class UpdatePurchaseRequest(BaseModel):
-    type: Optional[PurchaseType] = None
+class UpdateExpenseRequest(BaseModel):
+    category: Optional[ExpenseCategory] = None
     external_channel_id: Optional[int] = None
-    target_platform: Optional[str] = None
     channel_id: Optional[int] = None
     date: Optional[date] = None
     price: Optional[float] = None
     currency: Optional[str] = None
-    format: Optional[AdFormat] = None
-    status: Optional[PurchaseStatus] = None
+    status: Optional[ExpenseStatus] = None
     comment: Optional[str] = None
+    responsible: Optional[str] = None
     invite_link: Optional[str] = None
     joined_count: Optional[int] = None
     left_count: Optional[int] = None
@@ -101,8 +95,8 @@ class CpaSyncResponse(BaseModel):
     cpa_synced_at: datetime
 
 
-class PurchaseSummary(BaseModel):
+class ExpenseSummary(BaseModel):
     total: float
     currency: str
     count: int
-    by_type: dict[str, float] = {}
+    by_category: dict[str, float] = {}

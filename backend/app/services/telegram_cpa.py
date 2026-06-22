@@ -108,13 +108,13 @@ class TelegramCPAService:
             raise TelegramCPAError("Telegram getChat вернул ответ без id")
         return int(chat_id)
 
-    async def create_invite_link(self, chat_id: Union[int, str], purchase_id: int) -> str:
+    async def create_invite_link(self, chat_id: Union[int, str], expense_id: int) -> str:
         """Create a named invite link. chat_id can be numeric (works for both
         public and private channels) or '@username' (public only)."""
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
                 self._url("createChatInviteLink"),
-                json={"chat_id": chat_id, "name": f"Закупка #{purchase_id}"},
+                json={"chat_id": chat_id, "name": f"Расход #{expense_id}"},
             )
         data = r.json()
         if not data.get("ok"):

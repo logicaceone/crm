@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User, UserRole
 from ..models.channel import Channel, ChannelStat, ChannelPlatform
-from ..models.purchase import AdPurchase
 from ..schemas.channels import (
     ChannelResponse,
     ChannelWithStats,

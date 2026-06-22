@@ -3,7 +3,7 @@ from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, For
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
-from .purchase import AdFormat
+from .expense import AdFormat
 
 
 class SaleStatus(str, enum.Enum):
