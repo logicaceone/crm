@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
+from slowapi.errors import RateLimitExceeded
 from alembic.config import Config as AlembicConfig  # used by _check_migration_revision
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
@@ -12,6 +13,7 @@ from .config import settings
 from .database import SessionLocal, engine
 from .models.user import User, UserRole
 from .models.cpa_member import CpaMember  # noqa: F401 — ensures table is in metadata for migrations
+from .rate_limit import limiter, get_real_ip
 from .routers import auth, users, channels
 
 logger = logging.getLogger(__name__)
@@ -107,6 +109,34 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CRM API", lifespan=lifespan)
+
+# Rate limiting (currently scoped to /auth/login — other routes are
+# untouched). slowapi reads the limiter from app.state at request time,
+# so attaching it here is required even though routes use the decorator
+# imported directly from .rate_limit.
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Return a friendly Russian message instead of slowapi's default body.
+
+    Retry-After is in seconds (15 minutes) to match the user-facing copy.
+    """
+    ip = get_real_ip(request)
+    logger.warning(
+        "Rate limit hit: ip=%s path=%s limit=%s",
+        ip, request.url.path, getattr(exc, "detail", "?"),
+    )
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Слишком много попыток входа. "
+                      "Попробуйте снова через 15 минут.",
+        },
+        headers={"Retry-After": "900"},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -55,8 +55,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ username, password }),
     })
     if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail ?? 'Login failed')
+      let detail = 'Login failed'
+      try {
+        const data = await res.json()
+        detail = data.detail ?? detail
+      } catch {
+        // Non-JSON body (proxy 429, network blob) — keep the default.
+      }
+      const err = new Error(detail) as Error & { status?: number; retryAfter?: number }
+      err.status = res.status
+      const retry = res.headers.get('Retry-After')
+      if (retry) err.retryAfter = Number(retry)
+      throw err
     }
     setUser(await res.json())
   }

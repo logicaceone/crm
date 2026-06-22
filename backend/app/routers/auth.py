@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Response, Cookie, Request
 from sqlalchemy.orm import Session
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -7,6 +9,9 @@ from ..database import get_db
 from ..models.user import User, UserRole
 from ..schemas.auth import LoginRequest, UserResponse
 from ..config import settings
+from ..rate_limit import limiter, get_real_ip
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,9 +56,23 @@ def require_roles(roles: list[UserRole]):
 
 
 @router.post("/login", response_model=UserResponse)
-def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/5minutes")
+def login(
+    request: Request,
+    data: LoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    # NB: `request` must be a real `Request` parameter (not Depends) so
+    # slowapi can read it via the function signature. The limit counts
+    # every call — successful logins also consume budget, but legitimate
+    # users won't hit 5/5min in practice.
     user = db.query(User).filter(User.username == data.username).first()
     if not user or not bcrypt.checkpw(data.password.encode(), user.password_hash.encode()):
+        logger.warning(
+            "Failed login attempt: username=%r ip=%s",
+            data.username, get_real_ip(request),
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = _serializer().dumps(user.id)
     response.set_cookie(
