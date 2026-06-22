@@ -323,12 +323,16 @@ export function Expenses() {
   function buildBody(form: FormState): Record<string, unknown> {
     const isCPA = CPA_CATEGORIES.has(form.category)
     const isBlogger = form.category === 'blogger'
+    // Non-CPA categories don't have a status step in the form — the
+    // expense has already happened by the time it's logged, so we
+    // force "placed".
+    const status = isCPA ? form.status : 'placed'
     return {
       category: form.category,
       date: form.date,
       price: Number(form.price),
       currency: 'RUB',
-      status: form.status,
+      status,
       comment: form.comment || null,
       responsible: form.responsible || null,
       external_channel_id: isBlogger && form.external_channel_id
@@ -640,9 +644,11 @@ export function Expenses() {
                     </td>
                     <td style={{ ...tdStyle, color: '#8C7B6E' }}>{e.responsible ?? '—'}</td>
                     <td style={tdStyle}>
-                      <span style={{ color: STATUS_COLORS[e.status], fontWeight: 500, fontSize: 13 }}>
-                        {STATUS_LABELS[e.status]}
-                      </span>
+                      {isCPA ? (
+                        <span style={{ color: STATUS_COLORS[e.status], fontWeight: 500, fontSize: 13 }}>
+                          {STATUS_LABELS[e.status]}
+                        </span>
+                      ) : '—'}
                     </td>
                     {canWrite && (
                       <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
@@ -905,14 +911,16 @@ function ExpenseFormModal({
           </label>
         </div>
 
-        <label style={labelStyle}>
-          Статус
-          <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as ExpenseStatus }))}>
-            <option value="planned">Запланировано</option>
-            <option value="placed">Размещено</option>
-            <option value="cancelled">Отменено</option>
-          </select>
-        </label>
+        {isCPA && (
+          <label style={labelStyle}>
+            Статус
+            <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as ExpenseStatus }))}>
+              <option value="planned">Запланировано</option>
+              <option value="placed">Размещено</option>
+              <option value="cancelled">Отменено</option>
+            </select>
+          </label>
+        )}
 
         <label style={labelStyle}>
           Ответственный{respRequired ? ' *' : ''}
