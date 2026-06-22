@@ -7,6 +7,7 @@ from ..database import get_db
 from ..models.user import User, UserRole
 from ..models.channel import Channel
 from ..models.sale import AdSale, SaleStatus
+from ..models.sales_sheet_source import SalesImportLog
 from ..schemas.sales import (
     AdSaleResponse,
     CreateSaleRequest,
@@ -78,8 +79,26 @@ def list_sales(
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = max(1, min(page, total_pages))
     items = q.offset((page - 1) * per_page).limit(per_page).all()
+
+    # Mark which rows came from sheet imports — one cheap IN query per page
+    # instead of N+1 lookups inside the response loop.
+    imported_ids: set[int] = set()
+    if items:
+        rows = (
+            db.query(SalesImportLog.sale_id)
+            .filter(SalesImportLog.sale_id.in_([s.id for s in items]))
+            .all()
+        )
+        imported_ids = {r[0] for r in rows if r[0] is not None}
+
+    response_items = []
+    for s in items:
+        resp = AdSaleResponse.model_validate(s)
+        resp.imported_from_sheet = s.id in imported_ids
+        response_items.append(resp)
+
     return {
-        "items": [AdSaleResponse.model_validate(s) for s in items],
+        "items": response_items,
         "pagination": {"page": page, "per_page": per_page, "total": total, "total_pages": total_pages},
     }
 
@@ -90,6 +109,12 @@ def create_sale(
     db: Session = Depends(get_db),
     current_user: User = Depends(write_access),
 ):
+    # Manual create still requires a channel — only sheets-sync inserts
+    # are allowed to leave channel_id NULL.
+    if not data.channel_id:
+        raise HTTPException(status_code=400, detail="Канал обязателен")
+    if not data.format:
+        raise HTTPException(status_code=400, detail="Формат обязателен")
     ch = db.query(Channel).filter(Channel.id == data.channel_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")

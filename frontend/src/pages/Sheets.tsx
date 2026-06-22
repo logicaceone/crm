@@ -11,7 +11,6 @@ interface SyncResult {
   skipped: number
   errors: number
   error_message?: string | null
-  raw?: string
 }
 
 interface SheetSource {
@@ -24,8 +23,56 @@ interface SheetSource {
   last_sync_result: SyncResult | null
 }
 
+interface SectionProps {
+  title: string
+  subtitle: string
+  apiPrefix: string         // e.g. '/api/sheets/sources' or '/api/sheets/sales-sources'
+  syncAllPath: string       // e.g. '/api/sheets/sync-all'
+  testPath: string          // e.g. '/api/sheets/sources/test'
+  addPlaceholderName: string
+  addPlaceholderGid: string
+}
+
 export function Sheets() {
   const { user } = useAuth()
+  if (user?.role !== 'root') {
+    return <p style={{ color: '#dc2626' }}>Доступ только для root</p>
+  }
+
+  return (
+    <div>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700 }}>Парсинг Google Sheets</h1>
+      <p style={subtitleStyle}>Импорт расходов и продаж из публичных таблиц</p>
+
+      <SheetsSection
+        title="Листы расходов"
+        subtitle="СММ выплаты — импорт в категорию «Подписчики»"
+        apiPrefix="/api/sheets/sources"
+        syncAllPath="/api/sheets/sync-all"
+        testPath="/api/sheets/sources/test"
+        addPlaceholderName="Май 2026"
+        addPlaceholderGid="2047126112"
+      />
+
+      <div style={{ height: 32 }} />
+
+      <SheetsSection
+        title="Листы продаж"
+        subtitle="Реклама — импорт в модуль «Продажи». Импортируются только строки где «получил деньги» И «сделал пост» = TRUE."
+        apiPrefix="/api/sheets/sales-sources"
+        syncAllPath="/api/sheets/sales-sync-all"
+        testPath="/api/sheets/sales-sources/test"
+        addPlaceholderName="Май 2026"
+        addPlaceholderGid="804964044"
+      />
+    </div>
+  )
+}
+
+function SheetsSection({
+  title, subtitle, apiPrefix, syncAllPath, testPath,
+  addPlaceholderName, addPlaceholderGid,
+}: SectionProps) {
   const toast = useToast()
   const confirm = useConfirm()
 
@@ -46,7 +93,7 @@ export function Sheets() {
 
   async function load() {
     setLoading(true)
-    const res = await apiFetch('/api/sheets/sources')
+    const res = await apiFetch(apiPrefix)
     if (res.ok) setSources(await res.json())
     setLoading(false)
   }
@@ -54,7 +101,7 @@ export function Sheets() {
   async function handleSyncOne(s: SheetSource) {
     setSyncingId(s.id)
     try {
-      const res = await apiFetch(`/api/sheets/sources/${s.id}/sync`, { method: 'POST' })
+      const res = await apiFetch(`${apiPrefix}/${s.id}/sync`, { method: 'POST' })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         toast.error(d.detail ?? 'Ошибка синхронизации')
@@ -73,7 +120,7 @@ export function Sheets() {
   async function handleSyncAll() {
     setSyncingAll(true)
     try {
-      const res = await apiFetch('/api/sheets/sync-all', { method: 'POST' })
+      const res = await apiFetch(syncAllPath, { method: 'POST' })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         toast.error(d.detail ?? 'Ошибка синхронизации')
@@ -90,7 +137,7 @@ export function Sheets() {
   }
 
   async function handleToggle(s: SheetSource) {
-    const res = await apiFetch(`/api/sheets/sources/${s.id}`, {
+    const res = await apiFetch(`${apiPrefix}/${s.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ is_active: !s.is_active }),
     })
@@ -103,8 +150,8 @@ export function Sheets() {
   }
 
   async function handleDelete(s: SheetSource) {
-    if (!await confirm(`Удалить лист «${s.name}»? Импортированные расходы останутся.`)) return
-    const res = await apiFetch(`/api/sheets/sources/${s.id}`, { method: 'DELETE' })
+    if (!await confirm(`Удалить лист «${s.name}»? Импортированные записи останутся.`)) return
+    const res = await apiFetch(`${apiPrefix}/${s.id}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setSources(prev => prev.filter(x => x.id !== s.id))
       toast.success('Лист удалён')
@@ -125,7 +172,7 @@ export function Sheets() {
     setTestResult(null)
     setTesting(true)
     try {
-      const res = await apiFetch('/api/sheets/sources/test', {
+      const res = await apiFetch(testPath, {
         method: 'POST',
         body: JSON.stringify({ gid: addGid }),
       })
@@ -147,7 +194,7 @@ export function Sheets() {
     setAddError('')
     setAdding(true)
     try {
-      const res = await apiFetch('/api/sheets/sources', {
+      const res = await apiFetch(apiPrefix, {
         method: 'POST',
         body: JSON.stringify({ name: addName, gid: addGid }),
       })
@@ -165,15 +212,11 @@ export function Sheets() {
     }
   }
 
-  if (user?.role !== 'root') {
-    return <p style={{ color: '#dc2626' }}>Доступ только для root</p>
-  }
-
   if (loading) return (
     <div>
-      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700 }}>Парсинг Google Sheets</h1>
-      <p style={subtitleStyle}>Импорт расходов из таблицы СММ выплат</p>
-      <SkeletonTable rows={4} cols={5} />
+      <h2 style={sectionTitleStyle}>{title}</h2>
+      <p style={sectionSubtitleStyle}>{subtitle}</p>
+      <SkeletonTable rows={3} cols={5} />
     </div>
   )
 
@@ -181,8 +224,8 @@ export function Sheets() {
     <div>
       <div style={headerRowStyle}>
         <div>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700 }}>Парсинг Google Sheets</h1>
-          <p style={subtitleStyle}>Импорт расходов из таблицы СММ выплат</p>
+          <h2 style={sectionTitleStyle}>{title}</h2>
+          <p style={sectionSubtitleStyle}>{subtitle}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={handleSyncAll} disabled={syncingAll || sources.length === 0}>
@@ -266,13 +309,13 @@ export function Sheets() {
       </div>
 
       {showAdd && (
-        <Modal title="Добавить лист" onClose={() => setShowAdd(false)}>
+        <Modal title={`Добавить лист — ${title.toLowerCase()}`} onClose={() => setShowAdd(false)}>
           <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {addError && <div style={{ color: '#dc2626', fontSize: 13 }}>{addError}</div>}
             <label style={labelStyle}>
               Название листа *
               <input
-                placeholder="Май 2026"
+                placeholder={addPlaceholderName}
                 value={addName}
                 onChange={e => setAddName(e.target.value)}
                 required
@@ -282,7 +325,7 @@ export function Sheets() {
             <label style={labelStyle}>
               GID листа *
               <input
-                placeholder="2047126112"
+                placeholder={addPlaceholderGid}
                 value={addGid}
                 onChange={e => { setAddGid(e.target.value); setTestResult(null) }}
                 required
@@ -312,11 +355,13 @@ export function Sheets() {
   )
 }
 
+const subtitleStyle: CSSProperties = { margin: '0 0 20px', fontSize: 13, color: '#8C7B6E' }
+const sectionTitleStyle: CSSProperties = { margin: '0 0 2px', fontSize: 17, fontWeight: 600 }
+const sectionSubtitleStyle: CSSProperties = { margin: '0 0 12px', fontSize: 12, color: '#8C7B6E' }
 const headerRowStyle: CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  marginBottom: 16, gap: 12, flexWrap: 'wrap',
+  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+  marginBottom: 12, gap: 12, flexWrap: 'wrap',
 }
-const subtitleStyle: CSSProperties = { margin: '0 0 16px', fontSize: 13, color: '#8C7B6E' }
 const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', background: '#FEFEFE' }
 const thStyle: CSSProperties = {
   textAlign: 'left', padding: '10px 12px',

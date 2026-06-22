@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User, UserRole
 from ..models.sheet_source import SheetSource
+from ..models.sales_sheet_source import SalesSheetSource
 from ..services.sheets_sync import sync_source, sync_all_sources, preview_sheet
+from ..services.sales_sheets_sync import (
+    sync_sales_source,
+    sync_all_sales_sources,
+    preview_sales_sheet,
+)
 from .auth import require_roles
 from ..activity import log_action
 
@@ -202,6 +208,160 @@ async def test_source(data: TestSourceRequest, _: User = Depends(root_only)):
         raise HTTPException(status_code=400, detail="GID обязателен")
     try:
         preview = await preview_sheet(gid)
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Лист недоступен (HTTP {e.response.status_code}). "
+                   "Проверьте GID и доступ к таблице.",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Ошибка: {e}")
+    return preview
+
+
+# ── Sales sheets ────────────────────────────────────────────────────────────
+
+
+def _sales_response(s: SalesSheetSource) -> SheetSourceResponse:
+    parsed: Optional[dict] = None
+    if s.last_sync_result:
+        try:
+            parsed = json.loads(s.last_sync_result)
+        except json.JSONDecodeError:
+            parsed = {"raw": s.last_sync_result}
+    return SheetSourceResponse(
+        id=s.id, name=s.name, gid=s.gid, is_active=s.is_active,
+        created_at=s.created_at,
+        last_synced_at=s.last_synced_at,
+        last_sync_result=parsed,
+    )
+
+
+@router.get("/sales-sources", response_model=list[SheetSourceResponse])
+def list_sales_sources(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    rows = db.query(SalesSheetSource).order_by(SalesSheetSource.created_at).all()
+    return [_sales_response(s) for s in rows]
+
+
+@router.post("/sales-sources", response_model=SheetSourceResponse, status_code=201)
+def create_sales_source(
+    data: CreateSheetSourceRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(root_only),
+):
+    gid = data.gid.strip()
+    name = data.name.strip()
+    if not gid or not name:
+        raise HTTPException(status_code=400, detail="Имя и GID обязательны")
+
+    if db.query(SalesSheetSource).filter(SalesSheetSource.gid == gid).first():
+        raise HTTPException(status_code=400, detail="Лист с таким GID уже добавлен")
+
+    s = SalesSheetSource(name=name, gid=gid, is_active=True)
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    log_action(db, current_user, "create", "sales_sheet_source", s.id, f"Лист продаж: {s.name} (gid={s.gid})")
+    return _sales_response(s)
+
+
+@router.patch("/sales-sources/{source_id}", response_model=SheetSourceResponse)
+def update_sales_source(
+    source_id: int,
+    data: UpdateSheetSourceRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(root_only),
+):
+    s = db.query(SalesSheetSource).filter(SalesSheetSource.id == source_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Лист не найден")
+
+    updates = data.model_dump(exclude_unset=True)
+    if "gid" in updates and updates["gid"]:
+        gid_new = updates["gid"].strip()
+        if gid_new != s.gid and db.query(SalesSheetSource).filter(
+            SalesSheetSource.gid == gid_new, SalesSheetSource.id != source_id
+        ).first():
+            raise HTTPException(status_code=400, detail="Лист с таким GID уже добавлен")
+        s.gid = gid_new
+    if "name" in updates and updates["name"]:
+        s.name = updates["name"].strip()
+    if "is_active" in updates and updates["is_active"] is not None:
+        s.is_active = bool(updates["is_active"])
+
+    db.commit()
+    db.refresh(s)
+    log_action(db, current_user, "update", "sales_sheet_source", s.id, f"Лист продаж {s.name} обновлён")
+    return _sales_response(s)
+
+
+@router.delete("/sales-sources/{source_id}", status_code=204)
+def delete_sales_source(
+    source_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(root_only),
+):
+    s = db.query(SalesSheetSource).filter(SalesSheetSource.id == source_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Лист не найден")
+    name = s.name
+    db.delete(s)
+    db.commit()
+    log_action(db, current_user, "delete", "sales_sheet_source", source_id, f"Лист продаж: {name}")
+
+
+@router.post("/sales-sources/{source_id}/sync", response_model=SyncResultPayload)
+async def sync_one_sales_source(
+    source_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(root_only),
+):
+    s = db.query(SalesSheetSource).filter(SalesSheetSource.id == source_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Лист не найден")
+    result = await sync_sales_source(s, db)
+    log_action(
+        db, current_user, "update", "sales_sheet_source", s.id,
+        f"Синхронизация продаж: {result.get('created')} создано, "
+        f"{result.get('skipped')} пропущено, {result.get('errors')} ошибок",
+    )
+    return SyncResultPayload(
+        created=result.get("created", 0),
+        skipped=result.get("skipped", 0),
+        errors=result.get("errors", 0),
+        error_message=result.get("error_message"),
+    )
+
+
+@router.post("/sales-sync-all")
+async def sync_all_sales(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(root_only),
+):
+    results = await sync_all_sales_sources(db)
+    total = {
+        "created": sum(r["created"] for r in results),
+        "skipped": sum(r["skipped"] for r in results),
+        "errors": sum(r["errors"] for r in results),
+    }
+    log_action(
+        db, current_user, "update", "sales_sheet_source", None,
+        f"Массовая синхронизация продаж: {total['created']} создано, "
+        f"{total['skipped']} пропущено, {total['errors']} ошибок",
+    )
+    return {"results": results, "total": total}
+
+
+@router.post("/sales-sources/test")
+async def test_sales_source(data: TestSourceRequest, _: User = Depends(root_only)):
+    gid = data.gid.strip()
+    if not gid:
+        raise HTTPException(status_code=400, detail="GID обязателен")
+    try:
+        preview = await preview_sales_sheet(gid)
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=400,

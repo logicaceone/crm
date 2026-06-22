@@ -23,29 +23,34 @@ class CreatorRef(BaseModel):
 class AdSaleResponse(BaseModel):
     id: int
     client_name: str
-    channel_id: int
-    channel: ChannelRef
+    channel_id: Optional[int] = None
+    channel: Optional[ChannelRef] = None
     date: date
+    paid_at: Optional[date] = None
     price: float
     currency: str
-    format: AdFormat
+    format: Optional[AdFormat] = None
     status: SaleStatus
     comment: Optional[str]
     topic: Optional[str] = None
-    created_by: int
-    creator: CreatorRef
+    created_by: Optional[int] = None
+    creator: Optional[CreatorRef] = None
     created_at: datetime
+    # Whether this sale came from a Google Sheets import. Populated by
+    # the router (joined against sales_import_log) so the UI can tag it.
+    imported_from_sheet: bool = False
 
     model_config = {"from_attributes": True}
 
 
 class CreateSaleRequest(BaseModel):
     client_name: str
-    channel_id: int
+    channel_id: Optional[int] = None
     date: date
+    paid_at: Optional[date] = None
     price: float
     currency: str = "RUB"
-    format: AdFormat
+    format: Optional[AdFormat] = None
     status: SaleStatus = SaleStatus.agreed
     comment: Optional[str] = None
     topic: Optional[str] = None
@@ -55,6 +60,7 @@ class UpdateSaleRequest(BaseModel):
     client_name: Optional[str] = None
     channel_id: Optional[int] = None
     date: Optional[date] = None
+    paid_at: Optional[date] = None
     price: Optional[float] = None
     currency: Optional[str] = None
     format: Optional[AdFormat] = None

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     # is gated on sheets_sync_enabled so we can disable it without code.
     sheets_base_url: Optional[str] = None
     sheets_sync_enabled: bool = True
+    sales_sheets_base_url: Optional[str] = None
+    sales_sheets_sync_enabled: bool = True
 
     model_config = {"env_file": ".env"}
 

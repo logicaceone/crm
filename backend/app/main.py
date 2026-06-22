@@ -14,6 +14,7 @@ from .database import SessionLocal, engine
 from .models.user import User, UserRole
 from .models.cpa_member import CpaMember  # noqa: F401 — ensures table is in metadata for migrations
 from .models.sheet_source import SheetSource, SheetsImportLog  # noqa: F401
+from .models.sales_sheet_source import SalesSheetSource, SalesImportLog  # noqa: F401
 from .rate_limit import limiter, get_real_ip
 from .routers import auth, users, channels
 

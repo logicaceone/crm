@@ -195,6 +195,27 @@ async def sync_max_channels() -> None:
     )
 
 
+async def _sales_sheets_sync_job() -> None:
+    """Hourly pull from Sales Google Sheets."""
+    if not settings.sales_sheets_sync_enabled:
+        return
+    from .services.sales_sheets_sync import sync_all_sales_sources
+    db = SessionLocal()
+    try:
+        results = await sync_all_sales_sources(db)
+        for r in results:
+            print(
+                f"[Sales Sheets] {r.get('source')}: "
+                f"created={r.get('created')} skipped={r.get('skipped')} "
+                f"errors={r.get('errors')}",
+                flush=True,
+            )
+    except Exception as exc:
+        logger.exception("Sales sheets sync job failed: %s", exc)
+    finally:
+        db.close()
+
+
 async def _sheets_sync_job() -> None:
     """Hourly pull from Google Sheets — wraps sync_all_sources in its own
     DB session. Gated by settings.sheets_sync_enabled so the toggle in
@@ -298,10 +319,19 @@ def start_scheduler() -> None:
         id="sheets_sync_hourly",
         replace_existing=True,
     )
+    # Sales sheets sync — offset to :17 so we don't pile both csv fetches
+    # onto the same minute.
+    scheduler.add_job(
+        _sales_sheets_sync_job,
+        _CT(minute=17),
+        id="sales_sheets_sync_hourly",
+        replace_existing=True,
+    )
     scheduler.start()
     print(
         "[Scheduler] Started — channel sync 00:00 + 23:50 MSK, "
-        f"daily report 23:55 {settings.report_timezone}, sheets every hour at :07",
+        f"daily report 23:55 {settings.report_timezone}, "
+        "sheets at :07, sales sheets at :17",
         flush=True,
     )
 

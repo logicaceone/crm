@@ -22,7 +22,7 @@ interface Sale {
   id: number
   client_name: string
   channel_id: number
-  channel: Channel
+  channel: Channel | null
   date: string
   price: number
   currency: string
@@ -30,6 +30,7 @@ interface Sale {
   status: SaleStatus
   comment: string | null
   topic: string | null
+  imported_from_sheet?: boolean
   created_by: number
   creator: { id: number; username: string }
   created_at: string
@@ -398,10 +399,15 @@ export function Sales() {
             sales.map(s => (
               <tr key={s.id}>
                 <td style={tdStyle}>{s.date}</td>
-                <td style={tdStyle}>{s.client_name}</td>
+                <td style={tdStyle}>
+                  {s.client_name}
+                  {s.imported_from_sheet && (
+                    <span style={gsBadgeStyle} title="Импортировано из Google Sheets">GS</span>
+                  )}
+                </td>
                 <td style={{ ...tdStyle, color: s.topic ? undefined : '#8C7B6E' }}>{s.topic || '—'}</td>
-                <td style={tdStyle}>{s.channel.name}</td>
-                <td style={tdStyle}>{FORMAT_LABELS[s.format]}</td>
+                <td style={tdStyle}>{s.channel?.name ?? '—'}</td>
+                <td style={tdStyle}>{s.format ? FORMAT_LABELS[s.format] : '—'}</td>
                 <td style={tdStyle}>
                   {s.price.toLocaleString('ru-RU', { minimumFractionDigits: 0 })} {s.currency}
                 </td>
@@ -410,7 +416,7 @@ export function Sales() {
                     {STATUS_LABELS[s.status]}
                   </span>
                 </td>
-                <td style={{ ...tdStyle, color: '#8C7B6E' }}>{s.creator.username}</td>
+                <td style={{ ...tdStyle, color: '#8C7B6E' }}>{s.creator?.username ?? '—'}</td>
                 {canWrite && (
                   <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
                     <KebabMenu actions={[
@@ -630,3 +636,15 @@ const tdStyle: CSSProperties = { padding: '9px 14px', borderBottom: '1px solid #
 const formStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 }
 const errStyle: CSSProperties = { color: '#dc2626', fontSize: 13 }
 const labelStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 500, color: '#2C2B28' }
+const gsBadgeStyle: CSSProperties = {
+  display: 'inline-block',
+  marginLeft: 6,
+  padding: '1px 6px',
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: '0.04em',
+  background: '#E5E7EB',
+  color: '#374151',
+  borderRadius: 8,
+  verticalAlign: 'middle',
+}
