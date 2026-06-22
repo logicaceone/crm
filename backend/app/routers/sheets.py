@@ -71,6 +71,7 @@ class SyncResultPayload(BaseModel):
     skipped: int
     errors: int
     error_message: Optional[str] = None
+    unmatched_channels: Optional[list[str]] = None
 
 
 @router.get("/sources", response_model=list[SheetSourceResponse])
@@ -172,6 +173,7 @@ async def sync_one(
         skipped=result.get("skipped", 0),
         errors=result.get("errors", 0),
         error_message=result.get("error_message"),
+        unmatched_channels=result.get("unmatched_channels"),
     )
 
 
@@ -333,6 +335,7 @@ async def sync_one_sales_source(
         skipped=result.get("skipped", 0),
         errors=result.get("errors", 0),
         error_message=result.get("error_message"),
+        unmatched_channels=result.get("unmatched_channels"),
     )
 
 

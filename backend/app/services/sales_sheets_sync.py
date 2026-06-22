@@ -10,11 +10,138 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..models.channel import Channel, ChannelPlatform
 from ..models.sale import AdSale, SaleStatus
 from ..models.sales_sheet_source import SalesSheetSource, SalesImportLog
 from .sheets_sync import parse_date, parse_price
 
 logger = logging.getLogger(__name__)
+
+
+# ── Channel matching (column C) ──────────────────────────────────────────────
+
+# Bilingual prefixes; values map to ChannelPlatform value or 'vk' which
+# intentionally never resolves to a row in our `channels` table.
+PLATFORM_MAP = {
+    "мах": "max", "max": "max",
+    "тг":  "telegram", "tg": "telegram",
+    "вк":  "vk", "vk": "vk",
+}
+
+VK_PLATFORMS = frozenset({"vk"})
+
+# Strings that mean "this row covers many channels and we can't pin one
+# down" — used as a substring check on the lowercase entry.
+SKIP_TOKENS = ("все", "темный", "включая", "темн")
+
+
+def preprocess_channel_string(raw: Optional[str]) -> str:
+    """Strip + collapse whitespace + treat '.' as ',' (real data has both)."""
+    if not raw:
+        return ""
+    result = raw.strip()
+    result = " ".join(result.split())
+    result = result.replace(".", ",")
+    return result
+
+
+def parse_channel_entry(raw: str) -> Optional[tuple[str, str]]:
+    """Parse one comma-separated piece into (platform, city). Returns None
+    for garbage / "covers everything" markers."""
+    entry = raw.strip()
+    if len(entry) < 3:
+        return None
+    low = entry.lower()
+    if any(tok in low for tok in SKIP_TOKENS):
+        return None
+
+    parts = entry.split(None, 1)
+    prefix = parts[0].lower()
+    platform = PLATFORM_MAP.get(prefix)
+    if platform and len(parts) > 1:
+        city = parts[1].strip()
+    else:
+        # Unknown prefix or single word → treat the entire entry as a
+        # city name on the default (Max) platform.
+        platform = "max"
+        city = entry
+    return (platform, city)
+
+
+def parse_channels_column(raw: Optional[str]) -> list[tuple[str, str]]:
+    pre = preprocess_channel_string(raw)
+    if not pre:
+        return []
+    entries = [e.strip() for e in pre.split(",") if e.strip()]
+    out: list[tuple[str, str]] = []
+    for e in entries:
+        parsed = parse_channel_entry(e)
+        if parsed:
+            out.append(parsed)
+    return out
+
+
+def find_channel_id(
+    platform: str,
+    city: str,
+    db: Session,
+    cache: dict,
+) -> Optional[int]:
+    """Lookup the channel by platform + tolerant city match. Cached per
+    (platform, lowered-city) so a single sync touches the DB once per
+    distinct entry, not once per row."""
+    cache_key = f"{platform}:{city.lower()}"
+    if cache_key in cache:
+        return cache[cache_key]
+
+    # Map our string platform back to the enum the column uses.
+    try:
+        platform_enum = ChannelPlatform(platform)
+    except ValueError:
+        cache[cache_key] = None
+        return None
+
+    channels = db.query(Channel).filter(Channel.platform == platform_enum).all()
+    city_lower = city.lower().strip()
+
+    match: Optional[Channel] = None
+    for ch in channels:
+        name_lower = ch.name.lower()
+        # Two-way containment so "Елабуга" matches "Светлый | Елабуга"
+        # and vice versa. Stricter exact matching would miss the bulk
+        # of the data because sheet entries are bare city names.
+        if city_lower in name_lower or name_lower in city_lower:
+            match = ch
+            break
+
+    result = match.id if match else None
+    cache[cache_key] = result
+    if not match:
+        logger.warning(
+            "Sales sheets: no channel match — platform=%s, city=%r", platform, city,
+        )
+    return result
+
+
+def resolve_channel_id(
+    raw: Optional[str],
+    db: Session,
+    cache: dict,
+) -> Optional[int]:
+    """Apply the matching rules:
+      0 entries        → None
+      1 entry  (non-VK)→ DB lookup
+      2+ entries       → None (ambiguous)
+      only VK entries  → None (VK is intentionally not in the channel table)
+    """
+    entries = parse_channels_column(raw)
+    if not entries:
+        return None
+    matchable = [(p, c) for p, c in entries if p not in VK_PLATFORMS]
+    if len(matchable) != 1:
+        return None
+    p, c = matchable[0]
+    return find_channel_id(p, c, db, cache)
 
 
 def _csv_url(gid: str) -> str:
@@ -78,6 +205,8 @@ async def sync_sales_source(source: SalesSheetSource, db: Session) -> dict:
     created = 0
     skipped = 0
     errors = 0
+    channel_cache: dict[str, Optional[int]] = {}
+    unmatched: set[str] = set()
 
     try:
         rows = await fetch_sales_csv(source.gid)
@@ -121,7 +250,19 @@ async def sync_sales_source(source: SalesSheetSource, db: Session) -> dict:
             continue
 
         paid_at = parse_date(row["date_paid"]) if row["date_paid"] else None
-        comment = f"Канал: {row['channels']}" if row["channels"] else None
+
+        raw_channels = row["channels"]
+        channel_id = resolve_channel_id(raw_channels, db, channel_cache)
+        comment = f"Канал: {raw_channels}" if raw_channels.strip() else None
+
+        # Track only single-entry, non-VK lookups that returned nothing —
+        # multi-entry rows are intentional None and not worth surfacing.
+        entries = parse_channels_column(raw_channels)
+        matchable = [(p, c) for p, c in entries if p not in VK_PLATFORMS]
+        if len(matchable) == 1:
+            p, c = matchable[0]
+            if channel_cache.get(f"{p}:{c.lower()}") is None:
+                unmatched.add(f"{p}:{c}")
 
         try:
             sale = AdSale(
@@ -133,7 +274,7 @@ async def sync_sales_source(source: SalesSheetSource, db: Session) -> dict:
                 currency="RUB",
                 status=SaleStatus.paid,
                 comment=comment,
-                channel_id=None,
+                channel_id=channel_id,
                 format=None,
                 created_by=None,
             )
@@ -154,7 +295,9 @@ async def sync_sales_source(source: SalesSheetSource, db: Session) -> dict:
             logger.error("Sales sheets [%s]: row error — %s", source.name, e)
             errors += 1
 
-    result = {"created": created, "skipped": skipped, "errors": errors}
+    result: dict = {"created": created, "skipped": skipped, "errors": errors}
+    if unmatched:
+        result["unmatched_channels"] = sorted(unmatched)
     _save_result(db, source, result)
     return result
 

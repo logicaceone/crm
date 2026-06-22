@@ -11,6 +11,7 @@ interface SyncResult {
   skipped: number
   errors: number
   error_message?: string | null
+  unmatched_channels?: string[]
 }
 
 interface SheetSource {
@@ -272,9 +273,22 @@ function SheetsSection({
                       : <span style={{ color: '#8C7B6E' }}>Никогда</span>}
                   </td>
                   <td style={{ ...tdStyle, color: hasErrors ? '#dc2626' : undefined }}>
-                    {r
-                      ? <>+{r.created ?? 0} / {r.skipped ?? 0} / {r.errors ?? 0}{r.error_message ? ` (${r.error_message})` : ''}</>
-                      : '—'}
+                    {r ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span>
+                          +{r.created ?? 0} / {r.skipped ?? 0} / {r.errors ?? 0}
+                          {r.error_message ? ` (${r.error_message})` : ''}
+                        </span>
+                        {r.unmatched_channels && r.unmatched_channels.length > 0 && (
+                          <span
+                            style={{ fontSize: 11, color: '#C07D4A', cursor: 'help' }}
+                            title={r.unmatched_channels.join('\n')}
+                          >
+                            ⚠ не найдено: {r.unmatched_channels.length}
+                          </span>
+                        )}
+                      </div>
+                    ) : '—'}
                   </td>
                   <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
