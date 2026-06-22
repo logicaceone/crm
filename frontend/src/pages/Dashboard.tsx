@@ -47,7 +47,7 @@ interface RecentSale {
   id: number
   date: string
   client_name: string
-  channel_name: string
+  channel_name: string | null
   price: number
   currency: string
   status: string
@@ -355,7 +355,7 @@ export function Dashboard() {
                   <tr key={s.id} onClick={() => navigate('/sales')} style={clickableRowStyle}>
                     <td style={tdStyle}>{s.date}</td>
                     <td style={tdStyle}>{s.client_name}</td>
-                    <td style={tdStyle}>{s.channel_name}</td>
+                    <td style={tdStyle}>{s.channel_name ?? '—'}</td>
                     <td style={tdStyle}>{fmt(s.price)} {s.currency}</td>
                     <td style={tdStyle}>
                       <span style={{

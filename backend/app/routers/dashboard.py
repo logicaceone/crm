@@ -118,7 +118,7 @@ def dashboard_recent_expenses(
 ):
     rows = (
         db.query(Expense)
-        .order_by(Expense.created_at.desc())
+        .order_by(Expense.date.desc(), Expense.id.desc())
         .limit(5)
         .all()
     )
@@ -145,7 +145,7 @@ def dashboard_recent_sales(
 ):
     rows = (
         db.query(AdSale)
-        .order_by(AdSale.created_at.desc())
+        .order_by(AdSale.date.desc(), AdSale.id.desc())
         .limit(5)
         .all()
     )
@@ -154,7 +154,8 @@ def dashboard_recent_sales(
             "id": r.id,
             "date": str(r.date),
             "client_name": r.client_name,
-            "channel_name": r.channel.name,
+            # channel may be NULL for sheet-imported sales — the UI shows '—'.
+            "channel_name": r.channel.name if r.channel else None,
             "price": r.price,
             "currency": r.currency,
             "status": r.status.value,
