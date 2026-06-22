@@ -154,7 +154,7 @@ async def _sync_one_max_channel(db: Session, ch: Channel, today: date) -> dict:
         svc = MaxParserService(ch.max_bot_token, base_url=settings.max_api_base_url)
         chat_id = ch.max_chat_id
         if not chat_id and ch.max_chat_link:
-            chat_id = await svc.resolve_chat_id(ch.max_chat_link)
+            chat_id = await svc.resolve_chat_id(ch.max_chat_link, channel_name=ch.name)
             if chat_id:
                 ch.max_chat_id = chat_id
                 db.commit()
@@ -489,7 +489,7 @@ async def sync_channel(
     chat_id = ch.max_chat_id
     if not chat_id and ch.max_chat_link:
         try:
-            chat_id = await svc.resolve_chat_id(ch.max_chat_link)
+            chat_id = await svc.resolve_chat_id(ch.max_chat_link, channel_name=ch.name)
             if chat_id:
                 ch.max_chat_id = chat_id
                 db.commit()

@@ -21,10 +21,58 @@ class MaxNotFoundError(MaxApiError):
     pass
 
 
-def normalize_chat_link(raw: Optional[str]) -> str:
-    """Normalize any reasonable Max.ru chat link to a bare username.
+def _norm_title(t: Optional[str]) -> str:
+    """Normalise a chat title for tolerant comparison: lowercase, strip
+    pipes, dashes, spaces and zero-width chars."""
+    if not t:
+        return ""
+    s = t.lower()
+    for ch in ("|", "—", "-", "‐", "−", "·", "•"):
+        s = s.replace(ch, " ")
+    return " ".join(s.split())
 
-    Accepts:
+
+def _match_by_title(items: list[dict], channel_name: str) -> Optional[int]:
+    """Find chat_id in `items` whose title best matches channel_name.
+
+    Tries exact (normalised) match first, then a containment match in
+    either direction so 'Светлый | Мамадыш' matches 'Светлый Мамадыш'
+    and vice versa.
+    """
+    target = _norm_title(channel_name)
+    if not target:
+        return None
+    # Exact normalised match wins.
+    for item in items:
+        if _norm_title(item.get("title")) == target:
+            cid = item.get("chat_id") or item.get("id")
+            return int(cid) if cid else None
+    # Containment match — useful when one side has 'Светлый |' and the
+    # other 'Светлый ' (just the pipe vs no pipe).
+    for item in items:
+        api_title = _norm_title(item.get("title"))
+        if api_title and (api_title in target or target in api_title):
+            cid = item.get("chat_id") or item.get("id")
+            return int(cid) if cid else None
+    return None
+
+
+def is_join_link(raw: Optional[str]) -> bool:
+    """True if `raw` looks like a Max.ru invite link (max.ru/join/HASH).
+
+    Join links can't be resolved to a chat_id via the public Bot API —
+    the bot must already be a member. Caller should fall back to
+    matching by chat title against the bot's /chats list.
+    """
+    if not raw:
+        return False
+    return "max.ru/join/" in raw.strip().lower()
+
+
+def normalize_chat_link(raw: Optional[str]) -> str:
+    """Normalize a Max.ru chat link to a bare public username.
+
+    Accepts public-link forms only:
       @channel
       channel
       max.ru/channel
@@ -34,10 +82,15 @@ def normalize_chat_link(raw: Optional[str]) -> str:
       https://max.ru/@channel
       max.ru/channel/about?utm=foo  (extra path/query trimmed)
 
-    Returns the bare 'channel' identifier. Empty string when nothing
-    salvageable was found (caller can treat as invalid input).
+    Returns "" for empty input OR for invite-link forms
+    (max.ru/join/HASH) — those have no public username and must be
+    resolved differently. Use is_join_link() to detect that case.
     """
     if not raw:
+        return ""
+    if is_join_link(raw):
+        # Invite-hash links carry no public username. The first path
+        # segment is literally "join", which is meaningless to the API.
         return ""
     link = raw.strip()
     for scheme in ("https://", "http://"):
@@ -55,7 +108,12 @@ def normalize_chat_link(raw: Optional[str]) -> str:
 
 
 def canonical_chat_link(raw: Optional[str]) -> Optional[str]:
-    """Return a canonical 'https://max.ru/{name}' form, or None for empty."""
+    """Return a canonical 'https://max.ru/{name}' form for public links,
+    pass invite links through unchanged, or None for empty."""
+    if not raw:
+        return None
+    if is_join_link(raw):
+        return raw.strip()
     name = normalize_chat_link(raw)
     if not name:
         return None
@@ -97,17 +155,56 @@ class MaxParserService:
                 await asyncio.sleep(delay)
         raise last_exc
 
-    async def resolve_chat_id(self, chat_link: str) -> Optional[int]:
-        """Resolve a Max.ru chat link to a numeric chat_id.
-        Tries GET /chats/{username} first (direct lookup), then falls back to
-        scanning the paginated list and matching by link field.
+    async def _list_all_chats(self, client: httpx.AsyncClient) -> list[dict]:
+        """Return every chat the bot is a member of, walking pagination.
+
+        Max's /chats uses `marker` for cursor-style paging — fetch in
+        batches of 100 until the response stops returning a next marker.
         """
+        items: list[dict] = []
+        marker: Optional[str] = None
+        for _ in range(50):  # hard cap to stop runaway loops
+            params: dict = {"count": 100}
+            if marker:
+                params["marker"] = marker
+            try:
+                data = await self._get(client, "/chats", **params)
+            except MaxNotFoundError:
+                break
+            page = data.get("chats") or data.get("items") or []
+            items.extend(page)
+            marker = data.get("marker") or data.get("next_marker") or None
+            if not marker or not page:
+                break
+        return items
+
+    async def resolve_chat_id(
+        self,
+        chat_link: str,
+        channel_name: Optional[str] = None,
+    ) -> Optional[int]:
+        """Resolve a Max.ru chat link to a numeric chat_id.
+
+        Strategy:
+          1. For public links (max.ru/{username}): GET /chats/{username}
+             which works without scanning the bot's chat list.
+          2. For invite links (max.ru/join/HASH) — and as a fallback when
+             #1 fails — list every chat the bot is in and match by either
+             `link` (public) or `title` (fuzzy, for invite-only).
+
+        `channel_name` is required for invite-link resolution. Pass the
+        local Channel.name so we can match it against the chat title in
+        Max's chat list.
+        """
+        if is_join_link(chat_link):
+            return await self._resolve_by_name(channel_name)
+
         username = normalize_chat_link(chat_link)
         if not username:
             return None
 
         async with httpx.AsyncClient(timeout=15) as client:
-            # Attempt 1: direct path lookup GET /chats/{username}
+            # Attempt 1: direct GET /chats/{username}
             try:
                 data = await self._get(client, f"/chats/{username}")
                 chat = data.get("chat") or data
@@ -120,23 +217,39 @@ class MaxParserService:
             except MaxAuthError:
                 raise
 
-            # Attempt 2: list and match by link field
-            try:
-                data = await self._get(client, "/chats", username=username)
-                items = data.get("chats") or data.get("items") or []
-                username_lower = username.lower()
-                for item in items:
-                    link_field = (item.get("link") or item.get("username") or "")
-                    if link_field.lower().rstrip("/").split("/")[-1] == username_lower:
-                        cid = item.get("chat_id") or item.get("id")
-                        return int(cid) if cid else None
-                logger.warning(
-                    "[MAX] resolve_chat_id: no match for %r in %d items from /chats list",
-                    username, len(items),
-                )
-            except MaxNotFoundError:
-                pass
+            # Attempt 2: scan the full chat list and match by link
+            items = await self._list_all_chats(client)
+            username_lower = username.lower()
+            for item in items:
+                link_field = (item.get("link") or item.get("username") or "")
+                if link_field.lower().rstrip("/").split("/")[-1] == username_lower:
+                    cid = item.get("chat_id") or item.get("id")
+                    return int(cid) if cid else None
+            # Last fallback — match by title against channel_name if given.
+            if channel_name:
+                match = _match_by_title(items, channel_name)
+                if match is not None:
+                    logger.info("[MAX] resolve_chat_id: title-fallback %r -> %s", channel_name, match)
+                    return match
+            logger.warning(
+                "[MAX] resolve_chat_id: no match for %r in %d items from /chats list",
+                username, len(items),
+            )
         return None
+
+    async def _resolve_by_name(self, channel_name: Optional[str]) -> Optional[int]:
+        if not channel_name:
+            logger.warning("[MAX] resolve_by_name: no channel_name provided")
+            return None
+        async with httpx.AsyncClient(timeout=15) as client:
+            items = await self._list_all_chats(client)
+        match = _match_by_title(items, channel_name)
+        if match is None:
+            logger.warning(
+                "[MAX] resolve_by_name: no chat titled %r among %d bot-member chats",
+                channel_name, len(items),
+            )
+        return match
 
     async def get_chat_info(self, chat_id: int) -> dict:
         """Return {'subscribers': int|None, 'posts_total': int|None} from GET /chats/{chat_id}."""

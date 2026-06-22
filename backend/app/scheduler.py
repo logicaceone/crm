@@ -118,7 +118,7 @@ async def sync_max_channels() -> None:
 
                 chat_id = ch.max_chat_id
                 if not chat_id and ch.max_chat_link:
-                    chat_id = await svc.resolve_chat_id(ch.max_chat_link)
+                    chat_id = await svc.resolve_chat_id(ch.max_chat_link, channel_name=ch.name)
                     if chat_id:
                         ch.max_chat_id = chat_id
                         db.commit()
