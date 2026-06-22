@@ -122,6 +122,10 @@ const sidebarStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   flexShrink: 0,
+  position: 'sticky',
+  top: 0,
+  height: '100vh',
+  overflowY: 'auto',
 }
 
 const brandStyle: CSSProperties = {
