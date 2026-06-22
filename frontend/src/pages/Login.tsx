@@ -4,6 +4,26 @@ import { useAuth } from '../contexts/AuthContext'
 
 const BLOCK_SECONDS = 15 * 60  // matches backend Retry-After
 
+// Public site key — safe to ship in client bundle. Server-side
+// assessment uses the project's API key, kept out of the frontend.
+const RECAPTCHA_SITE_KEY = '6Lf4ny0tAAAAANKu_g9CJ42kxecqj-soO_FeafX0'
+
+declare global {
+  interface Window {
+    grecaptcha?: {
+      enterprise: {
+        ready: (cb: () => void) => void
+        getResponse: (widgetId?: number) => string
+        reset: (widgetId?: number) => void
+        render: (
+          el: HTMLElement,
+          opts: { sitekey: string; action?: string },
+        ) => number
+      }
+    }
+  }
+}
+
 export function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -12,8 +32,35 @@ export function Login() {
   const [blockedUntil, setBlockedUntil] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const captchaRef = useRef<HTMLDivElement | null>(null)
+  const widgetIdRef = useRef<number | null>(null)
   const { login, user, loading } = useAuth()
   const navigate = useNavigate()
+
+  // Render the reCAPTCHA widget once the enterprise.js script has
+  // loaded. Explicit render (instead of auto-discovery via the
+  // `g-recaptcha` class) is necessary because the script may load
+  // after React has already mounted the form.
+  useEffect(() => {
+    let cancelled = false
+    function tryRender() {
+      if (cancelled) return
+      const g = window.grecaptcha?.enterprise
+      if (!g || !captchaRef.current || widgetIdRef.current != null) {
+        if (!g) setTimeout(tryRender, 200)
+        return
+      }
+      g.ready(() => {
+        if (cancelled || !captchaRef.current || widgetIdRef.current != null) return
+        widgetIdRef.current = g.render(captchaRef.current, {
+          sitekey: RECAPTCHA_SITE_KEY,
+          action: 'LOGIN',
+        })
+      })
+    }
+    tryRender()
+    return () => { cancelled = true }
+  }, [])
 
   // Tick once a second while a block is active so the countdown
   // re-renders. Stop ticking immediately after the block clears.
@@ -37,11 +84,24 @@ export function Login() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
+
+    const g = window.grecaptcha?.enterprise
+    const captchaToken =
+      g && widgetIdRef.current != null ? g.getResponse(widgetIdRef.current) : ''
+    if (!captchaToken) {
+      setError('Подтвердите, что вы не робот.')
+      return
+    }
+
     setSubmitting(true)
     try {
-      await login(username, password)
+      await login(username, password, captchaToken)
       navigate('/dashboard', { replace: true })
     } catch (err) {
+      // Captcha tokens are single-use and expire in 2 minutes — reset
+      // the widget after every attempt (success or failure) so the
+      // user can retry without a stale token.
+      if (g && widgetIdRef.current != null) g.reset(widgetIdRef.current)
       const e = err as Error & { status?: number; retryAfter?: number }
       if (e.status === 429) {
         const seconds = e.retryAfter && e.retryAfter > 0 ? e.retryAfter : BLOCK_SECONDS
@@ -88,6 +148,15 @@ export function Login() {
               disabled={isBlocked}
             />
           </label>
+          <div
+            ref={captchaRef}
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              minHeight: 78,
+              marginTop: 2,
+            }}
+          />
           <button
             type="submit"
             disabled={submitting || isBlocked}

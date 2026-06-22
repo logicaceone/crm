@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel
 from ..models.user import UserRole
 
@@ -6,6 +7,7 @@ from ..models.user import UserRole
 class LoginRequest(BaseModel):
     username: str
     password: str
+    recaptcha_token: Optional[str] = None
 
 
 class UserResponse(BaseModel):

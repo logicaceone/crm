@@ -10,6 +10,7 @@ from ..models.user import User, UserRole
 from ..schemas.auth import LoginRequest, UserResponse
 from ..config import settings
 from ..rate_limit import limiter, get_real_ip
+from ..services.recaptcha import verify_recaptcha
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def require_roles(roles: list[UserRole]):
 
 @router.post("/login", response_model=UserResponse)
 @limiter.limit("5/5minutes")
-def login(
+async def login(
     request: Request,
     data: LoginRequest,
     response: Response,
@@ -71,6 +72,20 @@ def login(
     # slowapi can read it via the function signature. The limit counts
     # every call — successful logins also consume budget, but legitimate
     # users won't hit 5/5min in practice.
+
+    # reCAPTCHA runs BEFORE bcrypt so a failed captcha cuts off the
+    # expensive password hashing path entirely.
+    captcha_ok = await verify_recaptcha(data.recaptcha_token, "LOGIN")
+    if not captcha_ok:
+        logger.warning(
+            "reCAPTCHA failed: username=%r ip=%s",
+            data.username, get_real_ip(request),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Не удалось проверить reCAPTCHA. Обновите страницу и попробуйте снова.",
+        )
+
     user = db.query(User).filter(User.username == data.username).first()
     if not user or not bcrypt.checkpw(data.password.encode(), user.password_hash.encode()):
         logger.warning(
