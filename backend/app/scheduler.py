@@ -216,24 +216,45 @@ async def _daily_report_job() -> None:
         db.close()
 
 
+async def sync_all_channels(job_id: str = "manual") -> None:
+    """Run TG + MAX sync back-to-back in one job.
+
+    APScheduler fires this twice a day (00:00 and 23:50 MSK). Both
+    underlying functions own their own DB session and swallow
+    per-channel errors, so a single failing channel doesn't abort
+    the run. We don't wrap them in another try/except — let surprises
+    surface in logs.
+    """
+    print(f"[Scheduler] Channel sync started — job={job_id}", flush=True)
+    await sync_subscriber_counts()
+    await sync_max_channels()
+    print(f"[Scheduler] Channel sync finished — job={job_id}", flush=True)
+
+
 def start_scheduler() -> None:
-    # 23:58 GMT+3 = 20:58 UTC
+    # Two combined TG+MAX syncs per day, in Europe/Moscow time:
+    #   00:00 — snapshot for the start of the new day
+    #   23:50 — snapshot just before the 23:55 daily report runs
+    # The daily report compares the two newest snapshots, so the
+    # 23:50 run guarantees a fresh "стало" value for that evening's
+    # report.
     scheduler.add_job(
-        sync_subscriber_counts,
-        CronTrigger(hour=20, minute=58, timezone="UTC"),
-        id="sync_tg_subscribers",
+        sync_all_channels,
+        CronTrigger(hour=0, minute=0, timezone="Europe/Moscow"),
+        id="channel_sync_midnight",
         replace_existing=True,
+        kwargs={"job_id": "channel_sync_midnight"},
     )
-    # Max.ru sync every 24h at 00:00 GMT+3 = 21:00 UTC
     scheduler.add_job(
-        sync_max_channels,
-        CronTrigger(hour=21, minute=0, timezone="UTC"),
-        id="sync_max_subscribers",
+        sync_all_channels,
+        CronTrigger(hour=23, minute=50, timezone="Europe/Moscow"),
+        id="channel_sync_evening",
         replace_existing=True,
+        kwargs={"job_id": "channel_sync_evening"},
     )
     # Daily report at 23:55 in report_timezone (default Europe/Moscow).
-    # Note: syncs above run at 23:58 / 00:00 MSK, so this report sees
-    # the previous-day snapshot pair, not "today vs yesterday".
+    # The 23:50 channel-sync above writes today's "стало" snapshot,
+    # which this job then compares against yesterday's 23:50 snapshot.
     scheduler.add_job(
         _daily_report_job,
         CronTrigger(hour=23, minute=55, timezone=settings.report_timezone),
@@ -242,7 +263,7 @@ def start_scheduler() -> None:
     )
     scheduler.start()
     print(
-        f"[Scheduler] Started — TG sync 23:58 GMT+3, MAX sync 00:00 GMT+3, "
+        "[Scheduler] Started — channel sync 00:00 + 23:50 MSK, "
         f"daily report 23:55 {settings.report_timezone}",
         flush=True,
     )
