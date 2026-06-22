@@ -705,3 +705,12 @@ input[type="date"] {
   animation: shimmer 1.4s ease-in-out infinite;
   border-radius: 6px;
 }
+
+/* ── CPF page: stack summary row metrics under the name on mobile ────────── */
+@media (max-width: 767px) {
+  .cpf-summary-row > div:first-child {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}

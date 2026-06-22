@@ -22,6 +22,7 @@ from .routers.dashboard import router as dashboard_router
 from .routers.activity import router as activity_router
 from .routers.system_settings import router as system_settings_router
 from .routers.stats import router as stats_router
+from .routers.cpf import router as cpf_router
 from .scheduler import start_scheduler, stop_scheduler
 
 
@@ -127,6 +128,7 @@ app.include_router(dashboard_router)
 app.include_router(activity_router)
 app.include_router(system_settings_router)
 app.include_router(stats_router)
+app.include_router(cpf_router)
 
 
 # Map DB constraint names to user-facing 400 messages. Defence-in-depth:

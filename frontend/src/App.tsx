@@ -16,6 +16,7 @@ import { Users } from './pages/Users'
 import { Activity } from './pages/Activity'
 import { Settings } from './pages/Settings'
 import { Subscribers } from './pages/Subscribers'
+import { CPF } from './pages/CPF'
 
 export default function App() {
   return (
@@ -85,6 +86,14 @@ export default function App() {
               element={
                 <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
                   <Budget />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/cpf"
+              element={
+                <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
+                  <CPF />
                 </RoleRoute>
               }
             />
