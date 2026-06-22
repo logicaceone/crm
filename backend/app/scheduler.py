@@ -191,6 +191,31 @@ async def sync_max_channels() -> None:
     )
 
 
+async def _daily_report_job() -> None:
+    """Wrapper that owns its own DB session — the scheduler can't be
+    given a Depends-style session, and a per-job session keeps the
+    transaction scoped to one run.
+
+    Failures here MUST NOT propagate or the APScheduler job's next
+    fire is at risk; we log loud and swallow.
+    """
+    from .services.daily_report import run_daily_report
+    from .db_settings import get_setting
+    db = SessionLocal()
+    try:
+        # Toggle is "1"/"0" in system_settings; default = enabled.
+        # The cron stays scheduled regardless of the flag so flipping
+        # the toggle takes effect on the next day's run without a restart.
+        if get_setting(db, "daily_report_enabled", "1") == "0":
+            print("[Scheduler] Daily report toggle is OFF — skipping", flush=True)
+            return
+        await run_daily_report(db)
+    except Exception as exc:
+        logger.exception("Daily report job failed: %s", exc)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     # 23:58 GMT+3 = 20:58 UTC
     scheduler.add_job(
@@ -206,8 +231,21 @@ def start_scheduler() -> None:
         id="sync_max_subscribers",
         replace_existing=True,
     )
+    # Daily report at 23:55 in report_timezone (default Europe/Moscow).
+    # Note: syncs above run at 23:58 / 00:00 MSK, so this report sees
+    # the previous-day snapshot pair, not "today vs yesterday".
+    scheduler.add_job(
+        _daily_report_job,
+        CronTrigger(hour=23, minute=55, timezone=settings.report_timezone),
+        id="daily_report",
+        replace_existing=True,
+    )
     scheduler.start()
-    print("[Scheduler] Started — TG sync 23:58 GMT+3, MAX sync 00:00 GMT+3", flush=True)
+    print(
+        f"[Scheduler] Started — TG sync 23:58 GMT+3, MAX sync 00:00 GMT+3, "
+        f"daily report 23:55 {settings.report_timezone}",
+        flush=True,
+    )
 
 
 def stop_scheduler() -> None:

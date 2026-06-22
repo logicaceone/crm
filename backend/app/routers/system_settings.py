@@ -104,3 +104,72 @@ async def telegram_delete_webhook(
     except TelegramCPAError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return {"deleted": True, "telegram_response": result}
+
+
+# ── Daily report ────────────────────────────────────────────────────────
+
+class DailyReportConfig(BaseModel):
+    enabled: bool
+    chat_id_set: bool
+    chat_id_masked: Optional[str]
+    schedule: str  # human-readable e.g. "23:55 Europe/Moscow"
+
+
+@router.get("/daily-report", response_model=DailyReportConfig)
+def get_daily_report_config(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    """Surface the report's runtime state without leaking the chat id.
+
+    The toggle is stored in system_settings (string "1"/"0"); the chat
+    id stays in .env so a UI bug can't redirect reports to the wrong
+    group. We only show a masked tail so an admin can confirm "yes,
+    that's the right group".
+    """
+    enabled_raw = get_setting(db, "daily_report_enabled")
+    enabled = enabled_raw != "0"  # default = on
+    chat_id = settings.report_chat_id
+    masked = None
+    if chat_id:
+        masked = f"…{chat_id[-4:]}" if len(chat_id) > 4 else chat_id
+    return DailyReportConfig(
+        enabled=enabled,
+        chat_id_set=bool(chat_id),
+        chat_id_masked=masked,
+        schedule=f"23:55 {settings.report_timezone}",
+    )
+
+
+class UpdateDailyReportRequest(BaseModel):
+    enabled: bool
+
+
+@router.patch("/daily-report", response_model=DailyReportConfig)
+def update_daily_report_config(
+    data: UpdateDailyReportRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    set_setting(db, "daily_report_enabled", "1" if data.enabled else "0")
+    db.commit()
+    return get_daily_report_config(db=db, _=None)  # type: ignore[arg-type]
+
+
+@router.post("/daily-report/send-test")
+async def send_daily_report_test(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    """Build + send the report on demand. Useful for smoke-testing the
+    pipeline without waiting for 23:55.
+    """
+    from ..services.daily_report import run_daily_report
+    result = await run_daily_report(db)
+    if not result["sent"]:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось отправить отчёт. Проверь REPORT_BOT_TOKEN, "
+                   "REPORT_CHAT_ID и логи backend.",
+        )
+    return {"status": "sent", "channels": result["channels"]}

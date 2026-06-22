@@ -9,6 +9,13 @@ interface SettingsData {
   max_posts_sample: number
 }
 
+interface DailyReportConfig {
+  enabled: boolean
+  chat_id_set: boolean
+  chat_id_masked: string | null
+  schedule: string
+}
+
 export function Settings() {
   const toast = useToast()
   const [loading, setLoading] = useState(true)
@@ -20,18 +27,62 @@ export function Settings() {
   const [maxUrl, setMaxUrl] = useState('')
   const [maxSample, setMaxSample] = useState(20)
 
+  const [report, setReport] = useState<DailyReportConfig | null>(null)
+  const [reportSaving, setReportSaving] = useState(false)
+  const [reportSending, setReportSending] = useState(false)
+
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
-    const res = await apiFetch('/api/settings')
-    if (res.ok) {
-      const d: SettingsData = await res.json()
+    const [sRes, rRes] = await Promise.all([
+      apiFetch('/api/settings'),
+      apiFetch('/api/settings/daily-report'),
+    ])
+    if (sRes.ok) {
+      const d: SettingsData = await sRes.json()
       setTgTokenSet(d.telegram_bot_token_set)
       setMaxUrl(d.max_api_base_url)
       setMaxSample(d.max_posts_sample)
     }
+    if (rRes.ok) setReport(await rRes.json())
     setLoading(false)
+  }
+
+  async function toggleReport(enabled: boolean) {
+    setReportSaving(true)
+    try {
+      const res = await apiFetch('/api/settings/daily-report', {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail ?? 'Ошибка сохранения')
+        return
+      }
+      setReport(await res.json())
+      toast.success(enabled ? 'Дейли отчёт включён' : 'Дейли отчёт выключен')
+    } finally {
+      setReportSaving(false)
+    }
+  }
+
+  async function sendTestReport() {
+    setReportSending(true)
+    try {
+      const res = await apiFetch('/api/settings/daily-report/send-test', {
+        method: 'POST',
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail ?? 'Не удалось отправить отчёт')
+        return
+      }
+      toast.success('Тестовый отчёт отправлен')
+    } finally {
+      setReportSending(false)
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -133,6 +184,58 @@ export function Settings() {
         </div>
 
       </form>
+
+      {/* Daily report block lives outside the form: its toggle and
+          test button POST independently, no need to bundle with the
+          main "Сохранить". */}
+      <section style={{ ...sectionStyle, marginTop: 24 }}>
+        <h2 style={sectionTitleStyle}>Дейли отчёт</h2>
+        <p style={hintStyle}>
+          Ежедневная сводка по подписчикам каждого канала отправляется в Telegram-группу.
+        </p>
+
+        {report ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={report.enabled}
+                  disabled={reportSaving}
+                  onChange={e => toggleReport(e.target.checked)}
+                />
+                <span style={{ fontSize: 14, fontWeight: 500 }}>Отправлять дейли отчёт</span>
+              </label>
+            </div>
+
+            <div style={readOnlyRowStyle}>
+              <span style={readOnlyLabelStyle}>ID группы</span>
+              <span style={readOnlyValueStyle}>
+                {report.chat_id_set
+                  ? <code>{report.chat_id_masked}</code>
+                  : <span style={{ color: '#dc2626' }}>не задан в .env</span>}
+              </span>
+            </div>
+            <div style={readOnlyRowStyle}>
+              <span style={readOnlyLabelStyle}>Время отправки</span>
+              <span style={readOnlyValueStyle}><code>{report.schedule}</code></span>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={sendTestReport}
+                disabled={reportSending || !report.chat_id_set}
+                style={{ minWidth: 180 }}
+              >
+                {reportSending ? 'Отправка…' : 'Отправить тестовый отчёт'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: '#8C7B6E' }}>Загрузка…</div>
+        )}
+      </section>
     </div>
   )
 }
@@ -167,6 +270,24 @@ const labelStyle: CSSProperties = {
   fontSize: 13,
   fontWeight: 500,
   color: '#2C2B28',
+}
+
+const readOnlyRowStyle: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '8px 0',
+  borderTop: '1px solid #F0E8DE',
+  fontSize: 13,
+}
+
+const readOnlyLabelStyle: CSSProperties = {
+  color: '#8C7B6E',
+}
+
+const readOnlyValueStyle: CSSProperties = {
+  color: '#2C2B28',
+  fontWeight: 500,
 }
 
 const savedBadgeStyle: CSSProperties = {

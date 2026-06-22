@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     recaptcha_site_key: Optional[str] = None
     recaptcha_min_score: float = 0.5
 
+    # Daily TG report. The scheduler fires at 23:55 in report_timezone.
+    # If report_bot_token is empty we fall back to telegram_bot_token —
+    # one bot can do both channel sync and reporting.
+    report_bot_token: Optional[str] = None
+    report_chat_id: Optional[str] = None
+    report_timezone: str = "Europe/Moscow"
+
     model_config = {"env_file": ".env"}
 
     @property
