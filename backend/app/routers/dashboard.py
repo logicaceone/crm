@@ -71,7 +71,7 @@ def dashboard_summary(
 
 @router.get("/top-channels")
 def dashboard_top_channels(
-    limit: int = Query(default=5, ge=1, le=20),
+    limit: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
