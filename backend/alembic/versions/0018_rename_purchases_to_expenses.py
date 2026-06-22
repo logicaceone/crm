@@ -29,8 +29,11 @@ def upgrade() -> None:
     op.execute("TRUNCATE TABLE cpa_members RESTART IDENTITY CASCADE")
     op.execute("TRUNCATE TABLE ad_purchases RESTART IDENTITY CASCADE")
 
-    # FK cpa_members.purchase_id → ad_purchases.id will be dropped automatically
-    # when we drop ad_purchases; recreate it pointing at expenses afterwards.
+    # Drop the FK from cpa_members first — plain drop_table would fail
+    # because cpa_members.purchase_id still references ad_purchases.id.
+    op.execute(
+        "ALTER TABLE cpa_members DROP CONSTRAINT IF EXISTS cpa_members_purchase_id_fkey"
+    )
     op.drop_table("ad_purchases")
 
     # Drop enums that were only used by ad_purchases.
