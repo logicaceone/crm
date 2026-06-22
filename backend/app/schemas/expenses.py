@@ -50,8 +50,8 @@ class ExpenseResponse(BaseModel):
     joined_count: int = 0
     left_count: int = 0
     cpa_synced_at: Optional[datetime] = None
-    created_by: int
-    creator: CreatorRef
+    created_by: Optional[int] = None
+    creator: Optional[CreatorRef] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

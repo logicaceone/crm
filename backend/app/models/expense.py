@@ -79,7 +79,9 @@ class Expense(Base):
     cpa_synced_at = Column(DateTime(timezone=True), nullable=True)
     cpa_last_member_count = Column(Integer, nullable=False, default=0, server_default="0")
 
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Nullable because Sheets-sync inserts have no human author. Manual
+    # creates always set this via the API.
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     external_channel = relationship("ExternalChannel", back_populates="expenses")

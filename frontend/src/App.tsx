@@ -17,6 +17,7 @@ import { Activity } from './pages/Activity'
 import { Settings } from './pages/Settings'
 import { Subscribers } from './pages/Subscribers'
 import { CPF } from './pages/CPF'
+import { Sheets } from './pages/Sheets'
 
 export default function App() {
   return (
@@ -118,6 +119,14 @@ export default function App() {
               element={
                 <RoleRoute allowedRoles={['root']}>
                   <Settings />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/sheets"
+              element={
+                <RoleRoute allowedRoles={['root']}>
+                  <Sheets />
                 </RoleRoute>
               }
             />

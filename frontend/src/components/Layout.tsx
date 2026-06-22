@@ -19,6 +19,7 @@ const MENU: MenuItem[] = [
   { to: '/users', label: 'Пользователи', roles: ['root', 'admin'] },
   { to: '/activity', label: 'Действия', roles: ['root', 'admin'] },
   { to: '/settings', label: 'Настройки', roles: ['root'] },
+  { to: '/sheets', label: 'Парсинг Sheets', roles: ['root'] },
 ]
 
 export function Layout() {

@@ -195,6 +195,29 @@ async def sync_max_channels() -> None:
     )
 
 
+async def _sheets_sync_job() -> None:
+    """Hourly pull from Google Sheets — wraps sync_all_sources in its own
+    DB session. Gated by settings.sheets_sync_enabled so the toggle in
+    .env takes effect on next fire without code changes."""
+    if not settings.sheets_sync_enabled:
+        return
+    from .services.sheets_sync import sync_all_sources
+    db = SessionLocal()
+    try:
+        results = await sync_all_sources(db)
+        for r in results:
+            print(
+                f"[Sheets] {r.get('source')}: "
+                f"created={r.get('created')} skipped={r.get('skipped')} "
+                f"errors={r.get('errors')}",
+                flush=True,
+            )
+    except Exception as exc:
+        logger.exception("Sheets sync job failed: %s", exc)
+    finally:
+        db.close()
+
+
 async def _daily_report_job() -> None:
     """Wrapper that owns its own DB session — the scheduler can't be
     given a Depends-style session, and a per-job session keeps the
@@ -265,10 +288,20 @@ def start_scheduler() -> None:
         id="daily_report",
         replace_existing=True,
     )
+    # Sheets sync — every hour at minute 7 (avoids overlap with on-the-hour
+    # jobs). The job itself bails out early when sheets_sync_enabled is
+    # false, but the cron stays registered so the toggle is hot.
+    from apscheduler.triggers.cron import CronTrigger as _CT
+    scheduler.add_job(
+        _sheets_sync_job,
+        _CT(minute=7),
+        id="sheets_sync_hourly",
+        replace_existing=True,
+    )
     scheduler.start()
     print(
         "[Scheduler] Started — channel sync 00:00 + 23:50 MSK, "
-        f"daily report 23:55 {settings.report_timezone}",
+        f"daily report 23:55 {settings.report_timezone}, sheets every hour at :07",
         flush=True,
     )
 
