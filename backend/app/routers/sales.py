@@ -41,7 +41,6 @@ def _apply_filters(q, channel_id, status, client_name, from_, to, topic):
 
 @router.get("/summary", response_model=SaleSummary)
 def sales_summary(
-    channel_id: Optional[int] = None,
     status: Optional[SaleStatus] = None,
     client_name: Optional[str] = None,
     topic: Optional[str] = None,
@@ -50,7 +49,7 @@ def sales_summary(
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
-    q = _apply_filters(db.query(AdSale), channel_id, status, client_name, from_, to, topic)
+    q = _apply_filters(db.query(AdSale), None, status, client_name, from_, to, topic)
     sales = q.all()
     total = sum(s.price for s in sales)
     currencies = {s.currency for s in sales}
@@ -109,15 +108,15 @@ def create_sale(
     db: Session = Depends(get_db),
     current_user: User = Depends(write_access),
 ):
-    # Manual create still requires a channel — only sheets-sync inserts
-    # are allowed to leave channel_id NULL.
-    if not data.channel_id:
-        raise HTTPException(status_code=400, detail="Канал обязателен")
+    # Channel is now optional — a sale can record revenue that isn't
+    # attributable to a specific channel.
     if not data.format:
         raise HTTPException(status_code=400, detail="Формат обязателен")
-    ch = db.query(Channel).filter(Channel.id == data.channel_id).first()
-    if not ch:
-        raise HTTPException(status_code=404, detail="Channel not found")
+    ch: Optional[Channel] = None
+    if data.channel_id:
+        ch = db.query(Channel).filter(Channel.id == data.channel_id).first()
+        if not ch:
+            raise HTTPException(status_code=404, detail="Channel not found")
     payload = data.model_dump()
     payload["currency"] = "RUB"
     sale = AdSale(**payload, created_by=current_user.id)
@@ -125,7 +124,8 @@ def create_sale(
     db.commit()
     db.refresh(sale)
     log_action(db, current_user, "create", "sale", sale.id,
-               f"Продажа #{sale.id}: {sale.client_name} / {ch.name}, {sale.price} {sale.currency}")
+               f"Продажа #{sale.id}: {sale.client_name}"
+               f"{f' / {ch.name}' if ch else ''}, {sale.price} {sale.currency}")
     return sale
 
 

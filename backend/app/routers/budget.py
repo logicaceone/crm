@@ -24,14 +24,12 @@ def _exp_base(db: Session, from_: Optional[date], to: Optional[date]):
     return q
 
 
-def _inc_base(db: Session, from_: Optional[date], to: Optional[date], channel_id: Optional[int]):
+def _inc_base(db: Session, from_: Optional[date], to: Optional[date]):
     q = db.query(AdSale).filter(AdSale.status.in_(INCOME_STATUSES))
     if from_:
         q = q.filter(AdSale.date >= from_)
     if to:
         q = q.filter(AdSale.date <= to)
-    if channel_id:
-        q = q.filter(AdSale.channel_id == channel_id)
     return q
 
 
@@ -39,7 +37,6 @@ def _inc_base(db: Session, from_: Optional[date], to: Optional[date], channel_id
 def budget_summary(
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = Query(default=None),
-    channel_id: Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -47,7 +44,7 @@ def budget_summary(
         func.coalesce(func.sum(Expense.price), 0)
     ).scalar()
 
-    income: float = _inc_base(db, from_, to, channel_id).with_entities(
+    income: float = _inc_base(db, from_, to).with_entities(
         func.coalesce(func.sum(AdSale.price), 0)
     ).scalar()
 
@@ -83,7 +80,6 @@ def budget_summary(
 def budget_monthly(
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = Query(default=None),
-    channel_id: Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -98,7 +94,7 @@ def budget_monthly(
         .all()
     )
     inc_rows = (
-        _inc_base(db, from_, to, channel_id)
+        _inc_base(db, from_, to)
         .with_entities(
             func.to_char(AdSale.date, "YYYY-MM").label("month"),
             func.sum(AdSale.price).label("total"),

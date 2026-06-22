@@ -47,15 +47,9 @@ const CATEGORY_COLOR: Record<ExpenseCategory, string> = {
   services: '#6B7280', other: '#9CA3AF',
 }
 
-interface Channel {
-  id: number
-  name: string
-}
-
 interface Filters {
   from: string
   to: string
-  channel_id: string
 }
 
 function toIso(d: Date) {
@@ -85,7 +79,6 @@ function buildQS(f: Filters) {
   const p = new URLSearchParams()
   if (f.from) p.set('from', f.from)
   if (f.to) p.set('to', f.to)
-  if (f.channel_id) p.set('channel_id', f.channel_id)
   return p.toString() ? '?' + p.toString() : ''
 }
 
@@ -99,19 +92,13 @@ export function Budget() {
   const [filters, setFilters] = useState<Filters>({
     from: toIso(firstOfYear(new Date())),
     to: today,
-    channel_id: '',
   })
   const [activePreset, setActivePreset] = useState<number>(2) // Год
   const [rangeError, setRangeError] = useState<string | null>(null)
 
-  const [channels, setChannels] = useState<Channel[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [monthly, setMonthly] = useState<MonthRow[]>([])
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    apiFetch('/api/channels/all').then(r => r.ok ? r.json() : []).then(setChannels)
-  }, [])
 
   useEffect(() => {
     load()
@@ -176,19 +163,6 @@ export function Budget() {
           onError={setRangeError}
           error={rangeError}
         />
-        <label style={filterLabelStyle}>
-          Канал
-          <select
-            value={filters.channel_id}
-            onChange={e => setFilters(f => ({ ...f, channel_id: e.target.value }))}
-            style={{ fontSize: 13, padding: '4px 8px', border: '1px solid #E8DDD3', borderRadius: 6 }}
-          >
-            <option value="">Все каналы</option>
-            {channels.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
       </div>
 
       {/* KPI cards */}
@@ -377,14 +351,6 @@ const presetBtnStyle: CSSProperties = {
   fontWeight: 500,
 }
 
-const filterLabelStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 3,
-  fontSize: 12,
-  color: '#8C7B6E',
-  fontWeight: 500,
-}
 
 const cardsRowStyle: CSSProperties = {
   display: 'grid',

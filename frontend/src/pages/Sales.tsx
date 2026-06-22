@@ -21,7 +21,7 @@ interface Channel {
 interface Sale {
   id: number
   client_name: string
-  channel_id: number
+  channel_id: number | null
   channel: Channel | null
   date: string
   price: number
@@ -194,7 +194,7 @@ export function Sales() {
         method: 'POST',
         body: JSON.stringify({
           client_name: createForm.client_name,
-          channel_id: Number(createForm.channel_id),
+          channel_id: createForm.channel_id ? Number(createForm.channel_id) : null,
           date: createForm.date,
           price: Number(createForm.price),
           currency: createForm.currency,
@@ -227,7 +227,7 @@ export function Sales() {
     setEditSale(s)
     setEditForm({
       client_name: s.client_name,
-      channel_id: String(s.channel_id),
+      channel_id: s.channel_id != null ? String(s.channel_id) : '',
       date: s.date,
       price: String(s.price),
       currency: s.currency,
@@ -249,7 +249,7 @@ export function Sales() {
         method: 'PATCH',
         body: JSON.stringify({
           client_name: editForm.client_name,
-          channel_id: Number(editForm.channel_id),
+          channel_id: editForm.channel_id ? Number(editForm.channel_id) : null,
           date: editForm.date,
           price: Number(editForm.price),
           currency: editForm.currency,
@@ -519,13 +519,12 @@ function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit
           </label>
 
           <label style={labelStyle}>
-            Наш канал *
+            Наш канал
             <select
               value={form.channel_id}
               onChange={e => setForm(p => ({ ...p, channel_id: e.target.value }))}
-              required
             >
-              <option value="">— выберите —</option>
+              <option value="">— не выбран —</option>
               {channels.map(ch => (
                 <option key={ch.id} value={ch.id}>
                   {ch.platform ? `[${ch.platform === 'telegram' ? 'TG' : 'MAX'}] ` : ''}{ch.name}
