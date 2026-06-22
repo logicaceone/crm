@@ -25,6 +25,7 @@ class AdSale(Base):
     format = Column(Enum(AdFormat, name="ad_format", create_constraint=False), nullable=False)
     status = Column(Enum(SaleStatus, name="sale_status"), nullable=False, default=SaleStatus.agreed, server_default="agreed")
     comment = Column(Text, nullable=True)
+    topic = Column(String, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -22,13 +22,15 @@ read_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager, Us
 write_access = require_roles([UserRole.root, UserRole.admin, UserRole.manager])
 
 
-def _apply_filters(q, channel_id, status, client_name, from_, to):
+def _apply_filters(q, channel_id, status, client_name, from_, to, topic):
     if channel_id:
         q = q.filter(AdSale.channel_id == channel_id)
     if status:
         q = q.filter(AdSale.status == status)
     if client_name:
         q = q.filter(AdSale.client_name.ilike(f"%{client_name}%"))
+    if topic:
+        q = q.filter(AdSale.topic.ilike(f"%{topic}%"))
     if from_:
         q = q.filter(AdSale.date >= from_)
     if to:
@@ -41,12 +43,13 @@ def sales_summary(
     channel_id: Optional[int] = None,
     status: Optional[SaleStatus] = None,
     client_name: Optional[str] = None,
+    topic: Optional[str] = None,
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = None,
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
-    q = _apply_filters(db.query(AdSale), channel_id, status, client_name, from_, to)
+    q = _apply_filters(db.query(AdSale), channel_id, status, client_name, from_, to, topic)
     sales = q.all()
     total = sum(s.price for s in sales)
     currencies = {s.currency for s in sales}
@@ -59,6 +62,7 @@ def list_sales(
     channel_id: Optional[int] = None,
     status: Optional[SaleStatus] = None,
     client_name: Optional[str] = None,
+    topic: Optional[str] = None,
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = None,
     page: Optional[int] = None,
@@ -66,7 +70,7 @@ def list_sales(
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
-    q = _apply_filters(db.query(AdSale), channel_id, status, client_name, from_, to)
+    q = _apply_filters(db.query(AdSale), channel_id, status, client_name, from_, to, topic)
     q = q.order_by(AdSale.date.desc())
     if page is None:
         return q.all()

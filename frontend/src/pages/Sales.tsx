@@ -29,6 +29,7 @@ interface Sale {
   format: AdFormat
   status: SaleStatus
   comment: string | null
+  topic: string | null
   created_by: number
   creator: { id: number; username: string }
   created_at: string
@@ -70,6 +71,7 @@ interface Filters {
   channel_id: string
   status: string
   client_name: string
+  topic: string
   from: string
   to: string
 }
@@ -79,13 +81,14 @@ function buildQS(f: Filters): string {
   if (f.channel_id) p.set('channel_id', f.channel_id)
   if (f.status) p.set('status', f.status)
   if (f.client_name) p.set('client_name', f.client_name)
+  if (f.topic) p.set('topic', f.topic)
   if (f.from) p.set('from', f.from)
   if (f.to) p.set('to', f.to)
   const s = p.toString()
   return s ? `?${s}` : ''
 }
 
-const emptyFilters: Filters = { channel_id: '', status: '', client_name: '', from: '', to: '' }
+const emptyFilters: Filters = { channel_id: '', status: '', client_name: '', topic: '', from: '', to: '' }
 
 const emptyForm = {
   client_name: '',
@@ -96,6 +99,7 @@ const emptyForm = {
   format: 'post' as AdFormat,
   status: 'agreed' as SaleStatus,
   comment: '',
+  topic: '',
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -196,6 +200,7 @@ export function Sales() {
           format: createForm.format,
           status: createForm.status,
           comment: createForm.comment || null,
+          topic: createForm.topic || null,
         }),
       })
       if (!res.ok) {
@@ -228,6 +233,7 @@ export function Sales() {
       format: s.format,
       status: s.status,
       comment: s.comment ?? '',
+      topic: s.topic ?? '',
     })
     setEditError('')
   }
@@ -249,6 +255,7 @@ export function Sales() {
           format: editForm.format,
           status: editForm.status,
           comment: editForm.comment || null,
+          topic: editForm.topic || null,
         }),
       })
       if (!res.ok) {
@@ -339,6 +346,14 @@ export function Sales() {
           <option value="cancelled">Отменено</option>
         </select>
 
+        <input
+          placeholder="Поиск по тематике"
+          value={filters.topic}
+          onChange={e => setFilters(p => ({ ...p, topic: e.target.value }))}
+          style={{ ...filterInputStyle, width: 180 }}
+          className="filter-search-input"
+        />
+
         <DateRangePicker
           dateFrom={filters.from}
           dateTo={filters.to}
@@ -363,6 +378,7 @@ export function Sales() {
           <tr>
             <th style={thStyle}>Дата</th>
             <th style={thStyle}>Клиент</th>
+            <th style={thStyle}>Тематика</th>
             <th style={thStyle}>Канал</th>
             <th style={thStyle}>Формат</th>
             <th style={thStyle}>Сумма</th>
@@ -374,7 +390,7 @@ export function Sales() {
         <tbody>
           {sales.length === 0 ? (
             <tr>
-              <td colSpan={canWrite ? 8 : 7} style={{ ...tdStyle, textAlign: 'center', color: '#D4B896' }}>
+              <td colSpan={canWrite ? 9 : 8} style={{ ...tdStyle, textAlign: 'center', color: '#D4B896' }}>
                 Нет продаж
               </td>
             </tr>
@@ -383,6 +399,7 @@ export function Sales() {
               <tr key={s.id}>
                 <td style={tdStyle}>{s.date}</td>
                 <td style={tdStyle}>{s.client_name}</td>
+                <td style={{ ...tdStyle, color: s.topic ? undefined : '#8C7B6E' }}>{s.topic || '—'}</td>
                 <td style={tdStyle}>{s.channel.name}</td>
                 <td style={tdStyle}>{FORMAT_LABELS[s.format]}</td>
                 <td style={tdStyle}>
@@ -483,6 +500,15 @@ function SaleModal({ title, form, setForm, error, submitting, channels, onSubmit
               onChange={e => setForm(p => ({ ...p, client_name: e.target.value }))}
               required
               autoFocus
+            />
+          </label>
+
+          <label style={labelStyle}>
+            Тематика
+            <input
+              placeholder="Например: имплантология, недвижимость…"
+              value={form.topic}
+              onChange={e => setForm(p => ({ ...p, topic: e.target.value }))}
             />
           </label>
 

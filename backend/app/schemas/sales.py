@@ -31,6 +31,7 @@ class AdSaleResponse(BaseModel):
     format: AdFormat
     status: SaleStatus
     comment: Optional[str]
+    topic: Optional[str] = None
     created_by: int
     creator: CreatorRef
     created_at: datetime
@@ -47,6 +48,7 @@ class CreateSaleRequest(BaseModel):
     format: AdFormat
     status: SaleStatus = SaleStatus.agreed
     comment: Optional[str] = None
+    topic: Optional[str] = None
 
 
 class UpdateSaleRequest(BaseModel):
@@ -58,6 +60,7 @@ class UpdateSaleRequest(BaseModel):
     format: Optional[AdFormat] = None
     status: Optional[SaleStatus] = None
     comment: Optional[str] = None
+    topic: Optional[str] = None
 
 
 class SaleSummary(BaseModel):
