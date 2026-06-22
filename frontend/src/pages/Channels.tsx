@@ -29,7 +29,6 @@ interface Channel {
   description: string | null
   max_chat_id: number | null
   max_chat_link: string | null
-  max_bot_token_set: boolean
   created_at: string
   last_subscriber_stat: ChannelStat | null
   last_views_stat: ChannelStat | null
@@ -55,7 +54,6 @@ interface ChannelForm {
   description: string
   max_chat_id: string
   max_chat_link: string
-  max_bot_token: string
 }
 
 function growth(ch: Channel): string {
@@ -72,7 +70,7 @@ function growthColor(ch: Channel): string {
   return 'inherit'
 }
 
-const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', tg_chat_id: '', description: '', max_chat_id: '', max_chat_link: '', max_bot_token: '' }
+const emptyForm: ChannelForm = { name: '', platform: 'telegram', tg_link: '', tg_chat_id: '', description: '', max_chat_id: '', max_chat_link: '' }
 
 function statAge(dateStr: string | null | undefined): { label: string; stale: boolean } {
   if (!dateStr) return { label: 'нет данных', stale: true }
@@ -130,7 +128,6 @@ export function Channels() {
   const [editForm, setEditForm] = useState<ChannelForm>(emptyForm)
   const [editError, setEditError] = useState('')
   const [editSubmitting, setEditSubmitting] = useState(false)
-  const [clearToken, setClearToken] = useState(false)
   const [clearChatLink, setClearChatLink] = useState(false)
 
   const [syncingId, setSyncingId] = useState<number | null>(null)
@@ -183,7 +180,6 @@ export function Channels() {
       } else {
         body.max_chat_id = createForm.max_chat_id ? Number(createForm.max_chat_id) : null
         body.max_chat_link = createForm.max_chat_link || null
-        if (createForm.max_bot_token) body.max_bot_token = createForm.max_bot_token
       }
       const res = await apiFetch('/api/channels', { method: 'POST', body: JSON.stringify(body) })
       if (!res.ok) {
@@ -213,9 +209,7 @@ export function Channels() {
       description: ch.description ?? '',
       max_chat_id: ch.max_chat_id != null ? String(ch.max_chat_id) : '',
       max_chat_link: ch.max_chat_link ?? '',
-      max_bot_token: '',
     })
-    setClearToken(false)
     setClearChatLink(false)
     setEditError('')
   }
@@ -237,11 +231,6 @@ export function Channels() {
       } else {
         body.max_chat_id = editForm.max_chat_id ? Number(editForm.max_chat_id) : null
         body.max_chat_link = clearChatLink ? null : (editForm.max_chat_link || null)
-        if (clearToken) {
-          body.max_bot_token = null
-        } else if (editForm.max_bot_token) {
-          body.max_bot_token = editForm.max_bot_token
-        }
       }
       const res = await apiFetch(`/api/channels/${editChannel.id}`, {
         method: 'PATCH',
@@ -548,15 +537,11 @@ export function Channels() {
             onCancel={() => setEditChannel(null)}
             submitLabel="Сохранить"
             isEdit
-            existingTokenSet={editChannel.max_bot_token_set && !clearToken}
             existingChatLink={!!editChannel.max_chat_link && !clearChatLink}
-            clearToken={clearToken}
-            onClearToken={() => setClearToken(true)}
-            onUndoClearToken={() => setClearToken(false)}
             clearChatLink={clearChatLink}
             onClearChatLink={() => { setClearChatLink(true); setEditForm(f => ({ ...f, max_chat_link: '' })) }}
             onUndoClearChatLink={() => setClearChatLink(false)}
-            onSync={editChannel.platform === 'max' && editChannel.max_bot_token_set && !clearToken
+            onSync={editChannel.platform === 'max'
               ? () => handleSync(editChannel)
               : undefined}
             syncing={syncingId === editChannel.id}
@@ -576,11 +561,7 @@ interface ChannelFormProps {
   onCancel: () => void
   submitLabel: string
   isEdit?: boolean
-  existingTokenSet?: boolean
   existingChatLink?: boolean
-  clearToken?: boolean
-  onClearToken?: () => void
-  onUndoClearToken?: () => void
   clearChatLink?: boolean
   onClearChatLink?: () => void
   onUndoClearChatLink?: () => void
@@ -590,8 +571,7 @@ interface ChannelFormProps {
 
 function ChannelForm({
   form, onChange, onSubmit, error, submitting, onCancel, submitLabel,
-  isEdit, existingTokenSet, existingChatLink,
-  clearToken, onClearToken, onUndoClearToken,
+  isEdit, existingChatLink,
   clearChatLink, onClearChatLink, onUndoClearChatLink,
   onSync, syncing,
 }: ChannelFormProps) {
@@ -683,40 +663,9 @@ function ChannelForm({
               onChange={e => set({ max_chat_id: e.target.value })}
             />
           </label>
-          <label style={labelStyle}>
-            Bot Token
-            {isEdit && existingTokenSet && (
-              <span style={{ fontWeight: 400, color: '#8C7B6E', marginLeft: 4 }}>(оставьте пустым чтобы не менять)</span>
-            )}
-            {clearToken ? (
-              <div style={clearedRowStyle}>
-                <span>Токен будет очищен</span>
-                {onUndoClearToken && (
-                  <button type="button" onClick={onUndoClearToken} style={linkBtnStyle}>Отмена</button>
-                )}
-              </div>
-            ) : (
-              <>
-                {isEdit && existingTokenSet && (
-                  <div style={tokenSetRowStyle}>
-                    <span style={{ color: '#16a34a', fontSize: 12, fontWeight: 600 }}>Токен задан ✓</span>
-                    {onClearToken && (
-                      <button type="button" onClick={onClearToken} style={dangerLinkBtnStyle}>
-                        Очистить токен
-                      </button>
-                    )}
-                  </div>
-                )}
-                <input
-                  placeholder={isEdit && existingTokenSet ? '••••••••' : 'Bearer токен бота Max.ru'}
-                  value={form.max_bot_token}
-                  onChange={e => set({ max_bot_token: e.target.value })}
-                  type="password"
-                  autoComplete="off"
-                />
-              </>
-            )}
-          </label>
+          <div style={{ fontSize: 12, color: '#8C7B6E' }}>
+            Bot Token для Max задаётся один раз в <a href="/settings" style={{ color: '#0088cc' }}>Настройках</a> и используется для всех Max-каналов.
+          </div>
         </>
       )}
 
@@ -814,13 +763,6 @@ const labelStyle: CSSProperties = {
   fontSize: 13,
   fontWeight: 500,
   color: '#2C2B28',
-}
-
-const tokenSetRowStyle: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 8,
 }
 
 const clearedRowStyle: CSSProperties = {

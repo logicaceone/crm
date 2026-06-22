@@ -29,7 +29,6 @@ interface Channel {
   tg_link: string | null
   description: string | null
   max_chat_link: string | null
-  max_bot_token_set: boolean
   created_at: string
 }
 
@@ -207,7 +206,7 @@ export function ChannelDetail() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            {canWrite && channel.platform === 'max' && channel.max_bot_token_set && (
+            {canWrite && channel.platform === 'max' && (
               <button
                 onClick={handleSync}
                 disabled={syncing}

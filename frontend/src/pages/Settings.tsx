@@ -5,6 +5,7 @@ import { SkeletonCards } from '../components/PageSkeleton'
 
 interface SettingsData {
   telegram_bot_token_set: boolean
+  max_bot_token_set: boolean
   max_api_base_url: string
   max_posts_sample: number
 }
@@ -24,6 +25,9 @@ export function Settings() {
   const [tgTokenSet, setTgTokenSet] = useState(false)
   const [tgToken, setTgToken] = useState('')
 
+  const [maxTokenSet, setMaxTokenSet] = useState(false)
+  const [maxToken, setMaxToken] = useState('')
+
   const [maxUrl, setMaxUrl] = useState('')
   const [maxSample, setMaxSample] = useState(20)
 
@@ -42,6 +46,7 @@ export function Settings() {
     if (sRes.ok) {
       const d: SettingsData = await sRes.json()
       setTgTokenSet(d.telegram_bot_token_set)
+      setMaxTokenSet(d.max_bot_token_set)
       setMaxUrl(d.max_api_base_url)
       setMaxSample(d.max_posts_sample)
     }
@@ -93,8 +98,9 @@ export function Settings() {
         max_api_base_url: maxUrl,
         max_posts_sample: maxSample,
       }
-      // only include token if user typed something
+      // only include tokens if user typed something
       if (tgToken !== '') body.telegram_bot_token = tgToken
+      if (maxToken !== '') body.max_bot_token = maxToken
 
       const res = await apiFetch('/api/settings', {
         method: 'PATCH',
@@ -107,7 +113,9 @@ export function Settings() {
       }
       const updated: SettingsData = await res.json()
       setTgTokenSet(updated.telegram_bot_token_set)
+      setMaxTokenSet(updated.max_bot_token_set)
       setTgToken('')
+      setMaxToken('')
       setMaxUrl(updated.max_api_base_url)
       setMaxSample(updated.max_posts_sample)
       toast.success('Настройки сохранены')
@@ -154,6 +162,22 @@ export function Settings() {
           <h2 style={sectionTitleStyle}>Max.ru</h2>
           <p style={hintStyle}>Параметры интеграции с Max.ru для автосинхронизации подписчиков и просмотров.</p>
           <label style={labelStyle}>
+            Bot Token
+            <div style={{ position: 'relative' }}>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={maxTokenSet ? '●●●●●●●● (сохранён, оставьте пустым чтобы не менять)' : 'Вставьте токен бота Max'}
+                value={maxToken}
+                onChange={e => setMaxToken(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', paddingRight: maxTokenSet && maxToken === '' ? 80 : undefined }}
+              />
+              {maxTokenSet && maxToken === '' && (
+                <span style={savedBadgeStyle}>Сохранён</span>
+              )}
+            </div>
+          </label>
+          <label style={{ ...labelStyle, marginTop: 12 }}>
             API Base URL
             <input
               value={maxUrl}

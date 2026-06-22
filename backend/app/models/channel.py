@@ -22,7 +22,8 @@ class Channel(Base):
     description = Column(String, nullable=True)
     max_chat_id = Column(BigInteger, nullable=True)
     max_chat_link = Column(String, nullable=True)
-    max_bot_token = Column(String, nullable=True)  # Fernet-encrypted; never return plaintext
+    # Bot token lives in system_settings under key 'max_bot_token' — one
+    # bot is shared across every Max channel, matching the TG side.
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     stats = relationship("ChannelStat", back_populates="channel", cascade="all, delete-orphan")

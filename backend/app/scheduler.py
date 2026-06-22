@@ -99,6 +99,7 @@ async def sync_subscriber_counts() -> None:
 
 async def sync_max_channels() -> None:
     from .services.max_parser import MaxParserService, MaxAuthError, MaxNotFoundError, MaxApiError
+    from .db_settings import get_setting
 
     db = SessionLocal()
     today = date.today()
@@ -107,14 +108,17 @@ async def sync_max_channels() -> None:
     skipped_empty = 0
 
     try:
+        bot_token = get_setting(db, "max_bot_token")
+        if not bot_token:
+            print("[MAX] Max Bot Token not set in system_settings — skipping sync", flush=True)
+            return
         channels = db.query(Channel).filter(
             Channel.platform == ChannelPlatform.max,
-            Channel.max_bot_token.isnot(None),
         ).all()
 
         for ch in channels:
             try:
-                svc = MaxParserService(ch.max_bot_token, base_url=settings.max_api_base_url)
+                svc = MaxParserService(bot_token, base_url=settings.max_api_base_url)
 
                 chat_id = ch.max_chat_id
                 if not chat_id and ch.max_chat_link:

@@ -23,16 +23,9 @@ class ChannelResponse(BaseModel):
     description: Optional[str]
     max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None
-    max_bot_token_set: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-    @classmethod
-    def from_orm_with_token_flag(cls, ch) -> "ChannelResponse":
-        obj = cls.model_validate(ch)
-        object.__setattr__(obj, "max_bot_token_set", bool(ch.max_bot_token))
-        return obj
 
 
 class ChannelWithStats(ChannelResponse):
@@ -49,7 +42,6 @@ class CreateChannelRequest(BaseModel):
     description: Optional[str] = None
     max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None
-    max_bot_token: Optional[str] = None
 
 
 class UpdateChannelRequest(BaseModel):
@@ -60,7 +52,6 @@ class UpdateChannelRequest(BaseModel):
     description: Optional[str] = None
     max_chat_id: Optional[int] = None
     max_chat_link: Optional[str] = None
-    max_bot_token: Optional[str] = None
 
 
 class CreateStatRequest(BaseModel):

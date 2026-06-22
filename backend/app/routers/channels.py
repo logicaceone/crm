@@ -51,7 +51,6 @@ def _channel_response(ch: Channel) -> ChannelResponse:
         description=ch.description,
         max_chat_id=ch.max_chat_id,
         max_chat_link=ch.max_chat_link,
-        max_bot_token_set=bool(ch.max_bot_token),
         created_at=ch.created_at,
     )
 
@@ -145,13 +144,13 @@ async def _sync_one_tg_channel(
             "platform": "telegram", "subscribers": count}
 
 
-async def _sync_one_max_channel(db: Session, ch: Channel, today: date) -> dict:
+async def _sync_one_max_channel(db: Session, ch: Channel, today: date, bot_token: str) -> dict:
     """Pull subscribers + avg_views from Max.ru, upsert today's snapshot."""
     from ..services.max_parser import (
         MaxParserService, MaxAuthError, MaxNotFoundError, MaxApiError,
     )
     try:
-        svc = MaxParserService(ch.max_bot_token, base_url=settings.max_api_base_url)
+        svc = MaxParserService(bot_token, base_url=settings.max_api_base_url)
         chat_id = ch.max_chat_id
         if not chat_id and ch.max_chat_link:
             chat_id = await svc.resolve_chat_id(ch.max_chat_link, channel_name=ch.name)
@@ -220,6 +219,7 @@ async def sync_all_channels(
     from ..db_settings import get_setting
     today = date.today()
     tg_token = get_setting(db, "telegram_bot_token", settings.telegram_bot_token)
+    max_token = get_setting(db, "max_bot_token")
     channels = db.query(Channel).order_by(Channel.created_at).all()
     results = []
     synced = 0
@@ -235,12 +235,12 @@ async def sync_all_channels(
                 else:
                     result = await _sync_one_tg_channel(db, ch, tg_token, today)
             elif platform == "max":
-                if not ch.max_bot_token:
+                if not max_token:
                     result = {"channel_id": ch.id, "name": ch.name,
                               "status": "error",
-                              "error": "Max бот-токен не задан"}
+                              "error": "Max Bot Token не задан в настройках"}
                 else:
-                    result = await _sync_one_max_channel(db, ch, today)
+                    result = await _sync_one_max_channel(db, ch, today, max_token)
             else:
                 result = {"channel_id": ch.id, "name": ch.name,
                           "status": "error",
@@ -274,6 +274,7 @@ async def sync_all_channels_stream(
     from ..db_settings import get_setting
     today = date.today()
     tg_token = get_setting(db, "telegram_bot_token", settings.telegram_bot_token)
+    max_token = get_setting(db, "max_bot_token")
     channels = db.query(Channel).order_by(Channel.created_at).all()
     total = len(channels)
 
@@ -293,14 +294,14 @@ async def sync_all_channels_stream(
                     else:
                         result = await _sync_one_tg_channel(db, ch, tg_token, today)
                 elif platform == "max":
-                    if not ch.max_bot_token:
+                    if not max_token:
                         result = {
                             "channel_id": ch.id, "name": ch.name,
                             "status": "error",
-                            "error": "Max бот-токен не задан",
+                            "error": "Max Bot Token не задан в настройках",
                         }
                     else:
-                        result = await _sync_one_max_channel(db, ch, today)
+                        result = await _sync_one_max_channel(db, ch, today, max_token)
                 else:
                     result = {
                         "channel_id": ch.id, "name": ch.name,
@@ -385,7 +386,6 @@ def create_channel(
         description=data.description or None,
         max_chat_id=data.max_chat_id or None,
         max_chat_link=canonical_chat_link(max_link_in) if max_link_in else None,
-        max_bot_token=data.max_bot_token or None,
     )
     db.add(ch)
     db.commit()
@@ -431,7 +431,7 @@ def update_channel(
             if link_in and normalize_chat_link(link_in) == "":
                 raise HTTPException(status_code=400, detail="Invalid Max.ru channel link format")
             ch.max_chat_link = canonical_chat_link(link_in) if link_in else None
-        elif field in ("max_bot_token", "tg_link", "description"):
+        elif field in ("tg_link", "description"):
             # Empty string and null both mean "clear the field".
             setattr(ch, field, value or None)
         elif field == "max_chat_id":
@@ -473,17 +473,18 @@ async def sync_channel(
     platform = ch.platform.value if hasattr(ch.platform, "value") else str(ch.platform)
     if platform != "max":
         raise HTTPException(status_code=400, detail="Синхронизация доступна только для Max.ru каналов")
-    if not ch.max_bot_token:
-        raise HTTPException(status_code=400, detail="Bot token не задан для этого канала")
 
     from ..services.max_parser import MaxParserService, MaxAuthError, MaxNotFoundError, MaxApiError
     from ..db_settings import get_setting as _gs
 
+    bot_token = _gs(db, "max_bot_token")
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Max Bot Token не задан в настройках")
     base_url = _gs(db, "max_api_base_url") or settings.max_api_base_url
     posts_limit_raw = _gs(db, "max_posts_sample")
     posts_limit = int(posts_limit_raw) if posts_limit_raw else settings.max_posts_sample
 
-    svc = MaxParserService(ch.max_bot_token, base_url=base_url)
+    svc = MaxParserService(bot_token, base_url=base_url)
 
     # Step 1: resolve chat_id if not cached
     chat_id = ch.max_chat_id
