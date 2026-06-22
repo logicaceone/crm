@@ -14,11 +14,12 @@ class Settings(BaseSettings):
     max_api_base_url: str = "https://platform-api.max.ru"
     max_posts_sample: int = 20
 
-    # reCAPTCHA Enterprise. Server-side assessment is enabled only when
-    # all three are set; otherwise login skips verification with a
-    # warning, so the app stays usable before GCP creds are provisioned.
+    # reCAPTCHA Enterprise. Verification runs only when project_id +
+    # site_key are set AND GOOGLE_APPLICATION_CREDENTIALS points at a
+    # valid service-account JSON (the google-cloud SDK reads ADC from
+    # that env var). Otherwise login skips assessment with a warning,
+    # so the app stays usable before GCP creds are provisioned.
     recaptcha_project_id: Optional[str] = None
-    recaptcha_api_key: Optional[str] = None
     recaptcha_site_key: Optional[str] = None
     recaptcha_min_score: float = 0.5
 
