@@ -128,20 +128,23 @@ def resolve_channel_id(
     db: Session,
     cache: dict,
 ) -> Optional[int]:
-    """Apply the matching rules:
-      0 entries        → None
-      1 entry  (non-VK)→ DB lookup
-      2+ entries       → None (ambiguous)
-      only VK entries  → None (VK is intentionally not in the channel table)
+    """Apply the matching rules from the spec table:
+      0 entries                    → None
+      2+ entries (any platform)    → None (ambiguous)
+      1 entry, VK                  → None (VK lives outside our channel table)
+      1 entry, non-VK              → DB lookup
+
+    The 2+ rule fires on the RAW entry count, not the matchable subset —
+    so 'Елабуга, вк Елабуга' is null even though only one entry is
+    actually matchable.
     """
     entries = parse_channels_column(raw)
-    if not entries:
+    if len(entries) != 1:
         return None
-    matchable = [(p, c) for p, c in entries if p not in VK_PLATFORMS]
-    if len(matchable) != 1:
+    platform, city = entries[0]
+    if platform in VK_PLATFORMS:
         return None
-    p, c = matchable[0]
-    return find_channel_id(p, c, db, cache)
+    return find_channel_id(platform, city, db, cache)
 
 
 def _csv_url(gid: str) -> str:
@@ -258,9 +261,8 @@ async def sync_sales_source(source: SalesSheetSource, db: Session) -> dict:
         # Track only single-entry, non-VK lookups that returned nothing —
         # multi-entry rows are intentional None and not worth surfacing.
         entries = parse_channels_column(raw_channels)
-        matchable = [(p, c) for p, c in entries if p not in VK_PLATFORMS]
-        if len(matchable) == 1:
-            p, c = matchable[0]
+        if len(entries) == 1 and entries[0][0] not in VK_PLATFORMS:
+            p, c = entries[0]
             if channel_cache.get(f"{p}:{c.lower()}") is None:
                 unmatched.add(f"{p}:{c}")
 
