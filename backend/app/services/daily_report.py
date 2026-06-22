@@ -92,22 +92,96 @@ def get_report_data(db: Session) -> list[_Row]:
     return rows
 
 
+def _format_row_block(r: _Row) -> str:
+    prev_label = _fmt_int(r.previous_subs) if r.previous_subs is not None else "н/д"
+    cur_label = _fmt_int(r.current_subs)
+    return (
+        f"[{r.name}]\n"
+        f" — платформа: {r.platform}\n"
+        f" — подписчиков было: {prev_label}\n"
+        f" — подписчиков стало: {cur_label} ({_diff_str(r.diff)})"
+    )
+
+
 def format_report(rows: list[_Row], today: Optional[date] = None) -> str:
+    """Single-message report — kept for the run-once manual trigger that
+    returns a preview. format_report_chunks() is what send_report uses
+    in practice."""
     today = today or date.today()
     header = today.strftime("%d.%m.%Y")
     if not rows:
         return f"{header}\n\nНет данных по каналам."
 
-    lines = [header, ""]
+    parts = [header, ""]
     for r in rows:
-        lines.append(f"[{r.name}]")
-        lines.append(f" — платформа: {r.platform}")
-        prev_label = _fmt_int(r.previous_subs) if r.previous_subs is not None else "н/д"
-        lines.append(f" — подписчиков было: {prev_label}")
-        cur_label = _fmt_int(r.current_subs)
-        lines.append(f" — подписчиков стало: {cur_label} ({_diff_str(r.diff)})")
-        lines.append("")
-    return "\n".join(lines).rstrip()
+        parts.append(_format_row_block(r))
+        parts.append("")
+    return "\n".join(parts).rstrip()
+
+
+# Telegram caps sendMessage text at 4096 characters. Leave headroom so a
+# stray emoji or unicode-quirk doesn't push us over the cliff.
+TG_MAX_CHARS = 4000
+
+
+def format_report_chunks(
+    rows: list[_Row],
+    today: Optional[date] = None,
+    max_chars: int = TG_MAX_CHARS,
+) -> list[str]:
+    """Split the report across multiple messages, never cutting a
+    channel block in half. First chunk carries the date header; later
+    chunks get a 'Часть N/M' suffix appended at format time once the
+    total is known.
+    """
+    today = today or date.today()
+    header = today.strftime("%d.%m.%Y")
+    if not rows:
+        return [f"{header}\n\nНет данных по каналам."]
+
+    blocks = [_format_row_block(r) for r in rows]
+
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_len = 0
+
+    # Reserve some room in chunk 1 for the header line + part marker, in
+    # later chunks for just the part marker.
+    HEADER_RESERVE = len(header) + 32
+    PART_RESERVE = 32
+
+    def fits(block: str, reserve: int) -> bool:
+        # +2 for the "\n\n" between blocks
+        return current_len + len(block) + 2 + reserve <= max_chars
+
+    is_first = True
+    for block in blocks:
+        reserve = HEADER_RESERVE if is_first and not chunks else PART_RESERVE
+        if current and not fits(block, reserve):
+            chunks.append(current)
+            current = [block]
+            current_len = len(block)
+            is_first = False
+        else:
+            current.append(block)
+            current_len += len(block) + 2
+    if current:
+        chunks.append(current)
+
+    total = len(chunks)
+    out: list[str] = []
+    for i, group in enumerate(chunks, 1):
+        body = "\n\n".join(group)
+        parts: list[str] = []
+        if i == 1:
+            parts.append(header)
+            parts.append("")
+        if total > 1:
+            parts.append(f"(часть {i}/{total})")
+            parts.append("")
+        parts.append(body)
+        out.append("\n".join(parts).rstrip())
+    return out
 
 
 def _resolve_bot_token(db: Session) -> Optional[str]:
@@ -120,16 +194,7 @@ def _resolve_bot_token(db: Session) -> Optional[str]:
     return get_setting(db, "telegram_bot_token", settings.telegram_bot_token)
 
 
-async def send_report(text: str, db: Session) -> bool:
-    bot_token = _resolve_bot_token(db)
-    chat_id = settings.report_chat_id
-    if not bot_token or not chat_id:
-        logger.warning(
-            "Daily report skipped: bot_token=%s chat_id=%s",
-            bool(bot_token), bool(chat_id),
-        )
-        return False
-
+async def _send_single(text: str, bot_token: str, chat_id: str) -> bool:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -153,13 +218,47 @@ async def send_report(text: str, db: Session) -> bool:
             r.status_code, r.text[:500],
         )
         return False
-    logger.info("Daily report sent (chat_id=%s, len=%d)", chat_id, len(text))
     return True
 
 
+async def send_report(text_or_chunks, db: Session) -> bool:
+    """Send the report — accepts either a single string (back-compat) or
+    a list of chunks. Every chunk must succeed for the overall call to
+    report True; on partial failure later chunks are still attempted so
+    we don't sit on a half-sent report."""
+    bot_token = _resolve_bot_token(db)
+    chat_id = settings.report_chat_id
+    if not bot_token or not chat_id:
+        logger.warning(
+            "Daily report skipped: bot_token=%s chat_id=%s",
+            bool(bot_token), bool(chat_id),
+        )
+        return False
+
+    chunks = [text_or_chunks] if isinstance(text_or_chunks, str) else list(text_or_chunks)
+    ok = True
+    for i, chunk in enumerate(chunks, 1):
+        sent = await _send_single(chunk, bot_token, chat_id)
+        if not sent:
+            ok = False
+            logger.warning("Daily report: chunk %d/%d failed", i, len(chunks))
+        else:
+            logger.info("Daily report chunk %d/%d sent (len=%d)", i, len(chunks), len(chunk))
+    return ok
+
+
 async def run_daily_report(db: Session) -> dict:
-    """Build + send. Returns a small status dict for the manual trigger."""
+    """Build + send. Returns a small status dict for the manual trigger.
+
+    The preview is the joined chunks so callers see the full report,
+    even when the wire payload was split into multiple messages.
+    """
     rows = get_report_data(db)
-    text = format_report(rows)
-    sent = await send_report(text, db)
-    return {"sent": sent, "channels": len(rows), "preview": text}
+    chunks = format_report_chunks(rows)
+    sent = await send_report(chunks, db)
+    return {
+        "sent": sent,
+        "channels": len(rows),
+        "chunks": len(chunks),
+        "preview": "\n\n---\n\n".join(chunks),
+    }
