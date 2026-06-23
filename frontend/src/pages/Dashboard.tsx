@@ -378,8 +378,8 @@ export function Dashboard() {
       </div>
 
       {/* Audience tables — TG + MAX as independent blocks */}
-      <AudienceTable platform="telegram" title="Аудитория каналов (90 дней) · Telegram" />
-      <AudienceTable platform="max" title="Аудитория каналов (90 дней) · Max" />
+      <AudienceTable platform="telegram" title="Аудитория каналов (30 дней) · Telegram" />
+      <AudienceTable platform="max" title="Аудитория каналов (30 дней) · Max" />
     </div>
   )
 }
@@ -514,6 +514,21 @@ function PlatformChip({ platform }: { platform?: 'telegram' | 'max' }) {
   )
 }
 
+interface AudienceRow {
+  channel_id: number
+  channel_name: string
+  platform: 'telegram' | 'max'
+  values: Record<string, number | null>
+}
+
+// "2026-06-18" → "18.06" (current year) or "18.06.25" (prior years).
+function formatColHeader(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  const thisYear = new Date().getFullYear()
+  if (Number(y) === thisYear) return `${d}.${m}`
+  return `${d}.${m}.${y.slice(-2)}`
+}
+
 function AudienceTable({
   platform,
   title,
@@ -522,8 +537,8 @@ function AudienceTable({
   title: string
 }) {
   const [page, setPage] = useState(1)
-  const [channels, setChannels] = useState<Channel[]>([])
-  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+  const [columns, setColumns] = useState<string[]>([])
+  const [rows, setRows] = useState<AudienceRow[]>([])
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -536,8 +551,8 @@ function AudienceTable({
         if (!res.ok) return
         const data = await res.json()
         if (cancelled) return
-        setChannels(data.channels)
-        setRows(data.rows)
+        setColumns(data.columns ?? [])
+        setRows(data.rows ?? [])
         setTotal(data.pagination.total)
         setTotalPages(data.pagination.total_pages)
       })
@@ -547,31 +562,8 @@ function AudienceTable({
     return () => { cancelled = true }
   }, [platform, page])
 
-  function getVal(row: Record<string, unknown>, chName: string): number | null {
-    const v = row[chName]
-    return typeof v === 'number' ? v : null
-  }
-
-  // The current page comes back already sorted newest-first by the server.
-  // Deltas use the NEXT row in the page; rows beyond the page boundary
-  // don't have a comparable previous value within this view, so the
-  // last row simply has no delta.
-  function getDelta(idx: number, chName: string): number | null {
-    if (idx >= rows.length - 1) return null
-    const curr = getVal(rows[idx], chName)
-    const prev = getVal(rows[idx + 1], chName)
-    if (curr == null || prev == null) return null
-    return curr - prev
-  }
-
-  function cellBg(delta: number | null): string {
-    if (delta == null || delta === 0) return 'transparent'
-    if (delta > 0) return 'rgba(22,163,74,0.07)'
-    return 'rgba(220,38,38,0.07)'
-  }
-
-  // Empty platform — show an explanatory empty state but keep the block.
-  if (!loading && channels.length === 0) {
+  // Empty platform — show explanatory state but keep the block.
+  if (!loading && total === 0) {
     const isTg = platform === 'telegram'
     return (
       <div style={{ ...chartCardStyle, marginBottom: 16 }}>
@@ -584,11 +576,11 @@ function AudienceTable({
     )
   }
 
-  if (!loading && rows.length === 0) {
+  if (!loading && columns.length === 0) {
     return (
       <div style={{ ...chartCardStyle, marginBottom: 16 }}>
         <h2 style={blockTitleStyle}>{title}</h2>
-        <p style={emptyTextStyle}>Нет снапшотов за последние 90 дней</p>
+        <p style={emptyTextStyle}>Нет снапшотов за последние 30 дней</p>
       </div>
     )
   }
@@ -597,56 +589,29 @@ function AudienceTable({
     <div style={{ ...chartCardStyle, marginBottom: 16 }}>
       <h2 style={blockTitleStyle}>{title}</h2>
       <div style={{ overflowX: 'auto', marginTop: 4 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, width: '100%' }}>
           <thead>
             <tr>
-              <th style={audThStyle}>Дата</th>
-              {channels.map(ch => (
-                <th key={ch.id} style={{ ...audThStyle, color: '#2C2B28', fontWeight: 600 }}>
-                  <PlatformChip platform={ch.platform} />
-                  {ch.name}
-                </th>
+              <th style={audChannelHeadStyle}>Канал</th>
+              {columns.map(d => (
+                <th key={d} style={audDateHeadStyle}>{formatColHeader(d)}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
-              <tr key={String(row.date)}>
-                <td style={audDateStyle}>{String(row.date)}</td>
-                {channels.map(ch => {
-                  const val = getVal(row, ch.name)
-                  const delta = getDelta(i, ch.name)
+            {rows.map(row => (
+              <tr key={row.channel_id}>
+                <td style={audChannelCellStyle}>
+                  <PlatformChip platform={row.platform} />
+                  <span style={{ fontWeight: 600, color: '#2C2B28' }}>{row.channel_name}</span>
+                </td>
+                {columns.map(d => {
+                  const val = row.values[d]
                   return (
-                    <td
-                      key={ch.id}
-                      style={{
-                        padding: '7px 14px',
-                        borderBottom: '1px solid #F0E8DE',
-                        textAlign: 'right',
-                        background: cellBg(delta),
-                        transition: 'background 0.1s',
-                        minWidth: 110,
-                      }}
-                    >
-                      {val != null ? (
-                        <>
-                          <div style={{ fontWeight: 600, color: '#2C2B28' }}>
-                            {fmt(val)}
-                          </div>
-                          {delta != null && delta !== 0 && (
-                            <div style={{
-                              fontSize: 11,
-                              color: delta > 0 ? '#16a34a' : '#dc2626',
-                              fontWeight: 500,
-                              marginTop: 1,
-                            }}>
-                              {delta > 0 ? '+' : ''}{fmt(delta)}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <span style={{ color: '#D4B896' }}>—</span>
-                      )}
+                    <td key={d} style={audValueCellStyle}>
+                      {val != null
+                        ? <span style={{ fontWeight: 500, color: '#2C2B28' }}>{fmt(val)}</span>
+                        : <span style={{ color: '#D4B896' }}>—</span>}
                     </td>
                   )
                 })}
@@ -666,9 +631,11 @@ function AudienceTable({
   )
 }
 
-const audThStyle: CSSProperties = {
+// Common header style shared by Канал and date columns. `sticky top: 0`
+// would only matter if we also pinned vertically; the table doesn't
+// scroll vertically inside the card, so plain headers are enough.
+const audHeadBase: CSSProperties = {
   padding: '8px 14px',
-  textAlign: 'right',
   fontSize: 11,
   fontWeight: 700,
   letterSpacing: '0.05em',
@@ -679,15 +646,45 @@ const audThStyle: CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
-const audDateStyle: CSSProperties = {
+const audChannelHeadStyle: CSSProperties = {
+  ...audHeadBase,
+  textAlign: 'left',
+  // Sticky so the channel name stays visible while date columns scroll.
+  // `left: 0` + a solid background prevents value cells from showing
+  // through during the scroll.
+  position: 'sticky',
+  left: 0,
+  zIndex: 2,
+  minWidth: 200,
+  boxShadow: '1px 0 0 #E8DDD3',
+}
+
+const audDateHeadStyle: CSSProperties = {
+  ...audHeadBase,
+  textAlign: 'right',
+  minWidth: 80,
+}
+
+const audChannelCellStyle: CSSProperties = {
   padding: '7px 14px',
   borderBottom: '1px solid #F0E8DE',
-  color: '#8C7B6E',
-  fontSize: 12,
-  fontWeight: 500,
   whiteSpace: 'nowrap',
   textAlign: 'left',
-  background: '#FAFAF8',
+  background: '#FFFFFF',
+  position: 'sticky',
+  left: 0,
+  zIndex: 1,
+  minWidth: 200,
+  boxShadow: '1px 0 0 #E8DDD3',
+  display: 'table-cell',
+}
+
+const audValueCellStyle: CSSProperties = {
+  padding: '7px 14px',
+  borderBottom: '1px solid #F0E8DE',
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  minWidth: 80,
 }
 
 const blockTitleStyle: CSSProperties = {

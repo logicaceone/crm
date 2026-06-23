@@ -172,63 +172,95 @@ def dashboard_audience_table(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Audience snapshots over the last 90 days for a single platform.
+    """Audience snapshots over the last 30 days for a single platform.
 
-    Replaces the previous client-side N+1 (one /channels/{id}/stats call
-    per channel). One query for the platform's channels + one query for
-    their stats, server-side merge and pagination.
+    Response is transposed: rows = channels, columns = ISO dates
+    (newest first). Pagination is by channel — date columns stay the
+    same across pages so the UI doesn't have to refit headers.
     """
     if platform not in ("telegram", "max"):
         raise HTTPException(status_code=400, detail="platform must be telegram or max")
 
     today = date.today()
-    from_date = today - timedelta(days=90)
+    from_date = today - timedelta(days=30)
 
-    channels = (
-        db.query(Channel)
+    # Count channels first so pagination math doesn't load rows we
+    # won't show. Empty platforms get the standard empty envelope.
+    total = (
+        db.query(func.count(Channel.id))
         .filter(Channel.platform == ChannelPlatform(platform))
-        .order_by(Channel.created_at)
-        .all()
-    )
-    channel_payload = [
-        {"id": c.id, "name": c.name, "platform": platform}
-        for c in channels
-    ]
+        .scalar()
+    ) or 0
 
-    if not channels:
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+
+    if total == 0:
         return {
-            "channels": [],
+            "columns": [],
             "rows": [],
             "pagination": {"page": 1, "per_page": per_page, "total": 0, "total_pages": 1},
         }
 
-    channel_ids = [c.id for c in channels]
+    page_channels = (
+        db.query(Channel)
+        .filter(Channel.platform == ChannelPlatform(platform))
+        .order_by(Channel.created_at)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    channel_ids = [c.id for c in page_channels]
+
+    # All distinct snapshot dates across the whole platform in the
+    # window, so every page shows the same column set. Dates without
+    # any snapshot don't appear — the spec says "last 30 days where
+    # snapshots exist".
+    date_rows = (
+        db.query(ChannelStat.date)
+        .join(Channel, Channel.id == ChannelStat.channel_id)
+        .filter(
+            Channel.platform == ChannelPlatform(platform),
+            ChannelStat.date >= from_date,
+            ChannelStat.subscribers_count.isnot(None),
+        )
+        .distinct()
+        .order_by(ChannelStat.date.desc())
+        .all()
+    )
+    columns = [d[0].isoformat() for d in date_rows]
+
+    # Snapshots only for the channels on this page — one query, no N+1.
     stats = (
         db.query(ChannelStat)
         .filter(
-            ChannelStat.channel_id.in_(channel_ids),
+            ChannelStat.channel_id.in_(channel_ids) if channel_ids else False,
             ChannelStat.date >= from_date,
             ChannelStat.subscribers_count.isnot(None),
         )
         .all()
     )
 
-    name_by_id = {c.id: c.name for c in channels}
-    by_date: dict[str, dict] = {}
+    # values[channel_id][iso_date] = count
+    values_by_ch: dict[int, dict[str, int]] = {ch.id: {} for ch in page_channels}
     for s in stats:
-        d = str(s.date)
-        row = by_date.setdefault(d, {"date": d})
-        row[name_by_id[s.channel_id]] = s.subscribers_count
+        values_by_ch[s.channel_id][s.date.isoformat()] = s.subscribers_count
 
-    rows = sorted(by_date.values(), key=lambda r: r["date"], reverse=True)
-    total = len(rows)
-    total_pages = max(1, (total + per_page - 1) // per_page)
-    page = max(1, min(page, total_pages))
-    page_rows = rows[(page - 1) * per_page : page * per_page]
+    rows = []
+    for ch in page_channels:
+        ch_vals = values_by_ch.get(ch.id, {})
+        rows.append({
+            "channel_id": ch.id,
+            "channel_name": ch.name,
+            "platform": platform,
+            # Explicit None for dates without a snapshot so the UI can
+            # render "—" directly without a separate "has key" check.
+            "values": {d: ch_vals.get(d) for d in columns},
+        })
 
     return {
-        "channels": channel_payload,
-        "rows": page_rows,
+        "columns": columns,
+        "rows": rows,
         "pagination": {
             "page": page,
             "per_page": per_page,
