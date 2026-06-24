@@ -5,11 +5,14 @@ import { SkeletonTable } from '../components/PageSkeleton'
 import { useDebounced } from '../hooks/useDebounced'
 import { useAuth } from '../contexts/AuthContext'
 
-// Default region — comma-separated substrings, server treats them as
-// union. "Казань" alone is needed because some Казань-only channels
-// (Казань Светлый, etc.) have region=['Казань'] without "Татарстан"
-// in the string.
-const DEFAULT_REGION = 'Татарстан,Казань'
+// Default region: comma-separated substrings (server-side union).
+// Has to enumerate Татарстан towns explicitly because MaxDash tags
+// some channels with bare city names (Казань, Бугульма, Елабуга…)
+// without "Татарстан" in the string. Mirrors the backend default.
+const DEFAULT_REGION = 'Татарстан,Казань,Альметьевск,Алметьевск,'
+  + 'Набережные Челны,Нижнекамск,Зеленодольск,Бугульма,Елабуга,'
+  + 'Лениногорск,Чистополь,Заинск,Азнакаево,Нурлат,Мензелинск,'
+  + 'Буинск,Арск,Тетюши,Бавлы'
 const DEFAULT_CATEGORY = 'Новости и СМИ'
 const PER_PAGE = 25
 

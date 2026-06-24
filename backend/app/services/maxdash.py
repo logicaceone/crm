@@ -302,8 +302,11 @@ async def search_channels(
             }
             if category:
                 brand_params["category"] = category
-            # No participants_min here — we want all our branded channels,
-            # even small towns.
+            # Keep participants_min from main args — branded channels
+            # below it are noise (small schools, kindergartens in towns
+            # called "Светлый") and would crowd out real targets.
+            if participants_min is not None:
+                brand_params["participants_min"] = participants_min
             cur_off = 0
             while True:
                 params = {**brand_params, "offset": cur_off}
@@ -312,12 +315,24 @@ async def search_channels(
                 items = (page_response or {}).get("items") or []
                 if not isinstance(items, list) or not items:
                     break
+                import re
+                brand_re = re.compile(rf"\b{re.escape(brand)}\b", re.IGNORECASE)
+                # Regional allow-list. Empty region passes (channel has
+                # no region tag at all — some Светлый-branded channels
+                # come this way). Populated region must intersect our
+                # default region substring list so non-Tatar Подслушано
+                # variants from Москва/Свердловск don't sneak in.
+                allowed_regions_lower = {v.lower() for v in region_variants if v}
                 for it in items:
-                    title = (it.get("title") or "").lower()
-                    # Strict: title must actually contain the brand word.
-                    # MaxDash's `q` matches description too sometimes.
-                    if brand.lower() not in title:
+                    title = it.get("title") or ""
+                    if not brand_re.search(title):
                         continue
+                    item_regions = it.get("region") or []
+                    if isinstance(item_regions, str):
+                        item_regions = [item_regions]
+                    if item_regions:
+                        if not any(str(r).lower() in allowed_regions_lower for r in item_regions):
+                            continue
                     k = str(it.get("id") or it.get("username") or it.get("title"))
                     if k and k not in collected_by_id:
                         collected_by_id[k] = it
