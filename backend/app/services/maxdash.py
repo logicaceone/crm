@@ -284,6 +284,47 @@ async def search_channels(
         if len(collected_by_id) >= capped_limit:
             break
 
+    # Brand-name backfill: small-town "Светлый" channels often live in
+    # region=['<city>'] strings that don't match the regional filter
+    # (Бугульма, Азнакаево, Елабуга…). Pull them in by title search
+    # so they're always in the list, regardless of region tagging.
+    # Only triggers on the default region fetch (no user q), and only
+    # when caller didn't already pass a brand-overriding `q`.
+    if not q and settings.maxdash_brand_keywords:
+        for brand in (b.strip() for b in settings.maxdash_brand_keywords.split(",")):
+            if not brand:
+                continue
+            brand_params: dict[str, object] = {
+                "token": token,
+                "q": brand,
+                "search_by_title": 1,
+                "limit": MAXDASH_PAGE_SIZE,
+            }
+            if category:
+                brand_params["category"] = category
+            # No participants_min here — we want all our branded channels,
+            # even small towns.
+            cur_off = 0
+            while True:
+                params = {**brand_params, "offset": cur_off}
+                raw = await _api_get("/channels/search", params)
+                page_response = raw.get("response") if isinstance(raw, dict) else {}
+                items = (page_response or {}).get("items") or []
+                if not isinstance(items, list) or not items:
+                    break
+                for it in items:
+                    title = (it.get("title") or "").lower()
+                    # Strict: title must actually contain the brand word.
+                    # MaxDash's `q` matches description too sometimes.
+                    if brand.lower() not in title:
+                        continue
+                    k = str(it.get("id") or it.get("username") or it.get("title"))
+                    if k and k not in collected_by_id:
+                        collected_by_id[k] = it
+                if len(items) < MAXDASH_PAGE_SIZE:
+                    break
+                cur_off += MAXDASH_PAGE_SIZE
+
     collected = list(collected_by_id.values())
 
     # Sort by participants DESC and assign a stable rank. None / missing

@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # refresh — keeps the daily fetch from grabbing thousands of small
     # channels. Users can override via the UI filter.
     maxdash_default_participants_min: int = 500
+    # Always pull these brand-name channels in too, even if their
+    # region tag wouldn't otherwise match the regional filter.
+    # Comma-separated; matched via /channels/search?q=<term>.
+    maxdash_brand_keywords: str = "Светлый"
     maxdash_cache_ttl_hours: int = 24
 
     # Google Sheets CSV import (СММ ВЫПЛАТЫ ЗА НОВОСТЬ). Per-sheet gid is
