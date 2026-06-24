@@ -160,6 +160,12 @@ async def _resolve_region_variants(db: Session, needle: str) -> list[str]:
     needles = [s.strip().lower() for s in needle.split(",") if s.strip()]
     if not needles:
         return []
+    # Word-boundary match. Plain substring catches false positives like
+    # "Арск" matching "КраснодАрский край" or "Бавлы" matching anything
+    # ending in -бавлы. \b in Python re works against Unicode \w which
+    # includes Russian letters.
+    import re
+    patterns = [re.compile(rf"\b{re.escape(n)}\b", re.IGNORECASE) for n in needles]
     variants: list[str] = []
     seen: set[str] = set()
     for r in regs:
@@ -168,8 +174,7 @@ async def _resolve_region_variants(db: Session, needle: str) -> list[str]:
         name = r.get("name")
         if not isinstance(name, str):
             continue
-        lname = name.lower()
-        if any(n in lname for n in needles) and name not in seen:
+        if any(p.search(name) for p in patterns) and name not in seen:
             seen.add(name)
             variants.append(name)
     _store_cache(db, key, {"variants": variants})
@@ -246,7 +251,11 @@ async def search_channels(
 
     collected_by_id: dict[str, dict] = {}
 
-    async def _fetch_for(region_name: Optional[str]) -> None:
+    async def _fetch_for(region_name: Optional[str]) -> list[dict]:
+        """Fetch all pages for one region variant. Returns list of items.
+        Each variant is independent → safe to fan out via asyncio.gather.
+        """
+        out: list[dict] = []
         cur_offset = offset
         remaining = capped_limit
         while remaining > 0:
@@ -265,24 +274,24 @@ async def search_channels(
             items = page_response.get("items") or page_response.get("channels") or []
             if not isinstance(items, list):
                 items = []
-            for it in items:
-                # `id` is MaxDash's internal id; some channels lack it and
-                # `username` is the unique handle in any case. Prefer id.
-                k = str(it.get("id") or it.get("username") or it.get("title"))
-                if k and k not in collected_by_id:
-                    collected_by_id[k] = it
+            out.extend(items)
             if len(items) < page_size:
                 break
             cur_offset += page_size
             remaining -= page_size
+        return out
 
-    for variant in region_variants:
-        await _fetch_for(variant)
-        # Safety: stop the loop early if we've already collected
-        # MAXDASH_MAX_FETCH unique channels. Without this a wide
-        # substring could keep paging across all variants.
-        if len(collected_by_id) >= capped_limit:
-            break
+    # Fan out across region variants in parallel — 28 sequential calls
+    # was the main bottleneck (~30s). MaxDash hasn't pushed back on
+    # parallelism so far; if they start rate-limiting later, throttle
+    # via asyncio.Semaphore here.
+    import asyncio as _asyncio
+    results = await _asyncio.gather(*[_fetch_for(v) for v in region_variants])
+    for items in results:
+        for it in items:
+            k = str(it.get("id") or it.get("username") or it.get("title"))
+            if k and k not in collected_by_id:
+                collected_by_id[k] = it
 
     # Brand-name backfill: small-town "Светлый" channels often live in
     # region=['<city>'] strings that don't match the regional filter
