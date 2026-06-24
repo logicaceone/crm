@@ -8,6 +8,16 @@ interface DateRangePickerProps {
   error?: string | null
 }
 
+/**
+ * Two `<input type="date">` fields rendered side-by-side with an
+ * inline "С" / "По" prefix instead of column labels above. Lets the
+ * filter row stay a single 36px-tall strip aligned with the other
+ * selects/inputs around it.
+ *
+ * The browser handles the visible date placeholder ("дд.мм.гггг" or
+ * the locale equivalent) — we just keep the prefix label visible to
+ * say which input is "from" and which is "to".
+ */
 export function DateRangePicker({ dateFrom, dateTo, onChange, onError, error }: DateRangePickerProps) {
   const today = new Date().toISOString().slice(0, 10)
 
@@ -36,83 +46,72 @@ export function DateRangePicker({ dateFrom, dateTo, onChange, onError, error }: 
 
   return (
     <div style={wrapStyle} className="date-range-picker">
-      <label style={labelStyle}>
-        <span style={labelTextStyle}>С</span>
-        <div style={inputWrapStyle}>
-          <span style={iconStyle}>📅</span>
-          <input
-            type="date"
-            value={dateFrom}
-            max={today}
-            onChange={e => handleFrom(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-      </label>
-      <label style={labelStyle}>
-        <span style={labelTextStyle}>По</span>
-        <div style={inputWrapStyle}>
-          <span style={iconStyle}>📅</span>
-          <input
-            type="date"
-            value={dateTo}
-            max={today}
-            onChange={e => handleTo(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-      </label>
+      <div style={fieldStyle} className="dp-field">
+        <span style={prefixStyle}>С</span>
+        <input
+          type="date"
+          aria-label="Дата с"
+          value={dateFrom}
+          max={today}
+          onChange={e => handleFrom(e.target.value)}
+          style={inputStyle}
+        />
+      </div>
+      <div style={fieldStyle} className="dp-field">
+        <span style={prefixStyle}>По</span>
+        <input
+          type="date"
+          aria-label="Дата по"
+          value={dateTo}
+          max={today}
+          onChange={e => handleTo(e.target.value)}
+          style={inputStyle}
+        />
+      </div>
       {error && <span style={errorStyle}>{error}</span>}
     </div>
   )
 }
 
 const wrapStyle: CSSProperties = {
-  gap: 8,
-}
-
-const labelStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 3,
-}
-
-const labelTextStyle: CSSProperties = {
-  fontSize: 12,
-  color: '#8C7B6E',
-  fontWeight: 500,
-  letterSpacing: '0.02em',
-}
-
-const inputWrapStyle: CSSProperties = {
-  position: 'relative',
   display: 'flex',
   alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
 }
 
-const iconStyle: CSSProperties = {
+const fieldStyle: CSSProperties = {
+  position: 'relative',
+  display: 'inline-flex',
+  alignItems: 'center',
+  height: 36,
+}
+
+const prefixStyle: CSSProperties = {
   position: 'absolute',
-  left: 8,
-  fontSize: 13,
+  left: 10,
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#8C7B6E',
   pointerEvents: 'none',
   lineHeight: 1,
-  zIndex: 1,
 }
 
 const inputStyle: CSSProperties = {
+  height: 36,
+  boxSizing: 'border-box',
   fontSize: 13,
-  padding: '5px 8px 5px 28px',
+  padding: '0 10px 0 34px',
   border: '1.5px solid #E8DDD3',
   borderRadius: 8,
   background: '#FEFEFE',
   color: '#2C2B28',
   cursor: 'pointer',
-  minWidth: 120,
+  minWidth: 140,
 }
 
 const errorStyle: CSSProperties = {
   fontSize: 12,
   color: '#dc2626',
-  alignSelf: 'flex-end',
-  paddingBottom: 2,
+  alignSelf: 'center',
 }
