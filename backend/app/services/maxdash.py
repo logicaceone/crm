@@ -128,19 +128,36 @@ MAXDASH_PAGE_SIZE = 30
 MAXDASH_MAX_FETCH = 3000
 
 
-def _region_substring_match(item: dict, needle: str) -> bool:
-    """Case-insensitive substring match against the channel's `region`
-    array. MaxDash stores ~1300 region strings ('Республика Татарстан',
-    'Татарстан', 'Казань, Татарстан', районы…) — exact match would
-    miss most of them, so we filter on our side.
+async def _resolve_region_variants(db: Session, needle: str) -> list[str]:
+    """Return MaxDash region names whose name contains `needle`
+    (case-insensitive). For Татарстан that's 20+ names including
+    районы, suburbs, oblast variants — we need each separately
+    because /channels/search only emits `region` data when filtered
+    by an exact region.
+
+    The list itself is cached for 24h so repeated calls don't burn
+    /database/regions quota.
     """
     if not needle:
-        return True
+        return []
+    key = f"rt:regions:{needle.lower()}"
+    cached = _get_cached(db, key)
+    if cached is not None and isinstance(cached.get("variants"), list):
+        return cached["variants"]
+
+    token = get_token(db)
+    if not token:
+        return []
+    data = await _api_get("/database/regions", {"token": token})
+    regs = data.get("response") if isinstance(data, dict) else None
+    if not isinstance(regs, list):
+        return []
     n = needle.lower()
-    regions = item.get("region") or []
-    if isinstance(regions, str):
-        regions = [regions]
-    return any(n in str(r).lower() for r in regions)
+    variants = [r["name"] for r in regs
+                if isinstance(r, dict) and isinstance(r.get("name"), str)
+                and n in r["name"].lower()]
+    _store_cache(db, key, {"variants": variants})
+    return variants
 
 
 async def search_channels(
@@ -193,40 +210,65 @@ async def search_channels(
         base_params["q"] = q
     if category:
         base_params["category"] = category
-    # NB: region intentionally NOT forwarded — handled post-fetch.
     if participants_min is not None:
         base_params["participants_min"] = participants_min
     if participants_max is not None:
         base_params["participants_max"] = participants_max
 
-    collected: list[dict] = []
-    cur_offset = offset
-    remaining = capped_limit
-
-    while remaining > 0:
-        page_size = min(remaining, MAXDASH_PAGE_SIZE)
-        params = {**base_params, "limit": page_size, "offset": cur_offset}
-        raw = await _api_get("/channels/search", params)
-        page_response = raw.get("response") if isinstance(raw, dict) else None
-        if page_response is None:
-            page_response = raw
-        if not isinstance(page_response, dict):
-            raise MaxdashError(
-                f"Unexpected MaxDash payload shape: {type(page_response).__name__}"
-            )
-        items = page_response.get("items") or page_response.get("channels") or []
-        if not isinstance(items, list):
-            items = []
-        collected.extend(items)
-        if len(items) < page_size:
-            break  # last page
-        cur_offset += page_size
-        remaining -= page_size
-
-    # Region substring filter (MaxDash region exact-match would miss
-    # most Татарстан variants — see _region_substring_match comment).
+    # MaxDash quirk: `region` data is only returned when `region` is
+    # part of the query. To cover a region "family" (Татарстан and
+    # its districts/cities) we must hit /channels/search once per
+    # exact region name, then dedupe.
     if region:
-        collected = [it for it in collected if _region_substring_match(it, region)]
+        region_variants = await _resolve_region_variants(db, region)
+        # Fall back to the literal value if nothing matched the
+        # substring (lets the user still type a single exact name).
+        if not region_variants:
+            region_variants = [region]
+    else:
+        region_variants = [None]
+
+    collected_by_id: dict[str, dict] = {}
+
+    async def _fetch_for(region_name: Optional[str]) -> None:
+        cur_offset = offset
+        remaining = capped_limit
+        while remaining > 0:
+            page_size = min(remaining, MAXDASH_PAGE_SIZE)
+            params = {**base_params, "limit": page_size, "offset": cur_offset}
+            if region_name:
+                params["region"] = region_name
+            raw = await _api_get("/channels/search", params)
+            page_response = raw.get("response") if isinstance(raw, dict) else None
+            if page_response is None:
+                page_response = raw
+            if not isinstance(page_response, dict):
+                raise MaxdashError(
+                    f"Unexpected MaxDash payload shape: {type(page_response).__name__}"
+                )
+            items = page_response.get("items") or page_response.get("channels") or []
+            if not isinstance(items, list):
+                items = []
+            for it in items:
+                # `id` is MaxDash's internal id; some channels lack it and
+                # `username` is the unique handle in any case. Prefer id.
+                k = str(it.get("id") or it.get("username") or it.get("title"))
+                if k and k not in collected_by_id:
+                    collected_by_id[k] = it
+            if len(items) < page_size:
+                break
+            cur_offset += page_size
+            remaining -= page_size
+
+    for variant in region_variants:
+        await _fetch_for(variant)
+        # Safety: stop the loop early if we've already collected
+        # MAXDASH_MAX_FETCH unique channels. Without this a wide
+        # substring could keep paging across all variants.
+        if len(collected_by_id) >= capped_limit:
+            break
+
+    collected = list(collected_by_id.values())
 
     # Sort by participants DESC and assign a stable rank. None / missing
     # subscriber counts fall to the bottom.
