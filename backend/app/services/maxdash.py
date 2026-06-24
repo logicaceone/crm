@@ -120,12 +120,27 @@ async def _api_get(path: str, params: dict, timeout: float = 30.0) -> dict:
         raise MaxdashError(f"Bad JSON from MaxDash: {exc}") from exc
 
 
-# MaxDash caps a single `/channels/search` call at 30 items regardless
-# of the requested limit. Iterate offset to collect more, just like
-# their own web UI does internally.
+# MaxDash advertises max limit=100, in practice the API returns at most
+# 30 items per call regardless of limit. We page through offset to
+# accumulate the whole result, just like their own web UI does.
 MAXDASH_PAGE_SIZE = 30
 # Safety cap so a misconfigured client can't drain the monthly quota.
-MAXDASH_MAX_FETCH = 1000
+MAXDASH_MAX_FETCH = 3000
+
+
+def _region_substring_match(item: dict, needle: str) -> bool:
+    """Case-insensitive substring match against the channel's `region`
+    array. MaxDash stores ~1300 region strings ('Республика Татарстан',
+    'Татарстан', 'Казань, Татарстан', районы…) — exact match would
+    miss most of them, so we filter on our side.
+    """
+    if not needle:
+        return True
+    n = needle.lower()
+    regions = item.get("region") or []
+    if isinstance(regions, str):
+        regions = [regions]
+    return any(n in str(r).lower() for r in regions)
 
 
 async def search_channels(
@@ -136,19 +151,27 @@ async def search_channels(
     category: Optional[str] = None,
     participants_min: Optional[int] = None,
     participants_max: Optional[int] = None,
-    limit: int = 300,
+    limit: int = 500,
     offset: int = 0,
     bypass_cache: bool = False,
 ) -> dict:
-    """Return a flattened MaxDash channels-search response.
+    """MaxDash channels-search, paginated + post-filtered + sorted.
 
-    MaxDash limits each /channels/search hit to 30 items; we loop the
-    offset until `limit` is reached or the API runs out of results.
-    The full set is cached for 24h under one key, so paging inside the
-    UI is free (works on local data).
+    Pipeline:
+      1. Page through /channels/search (30 per call) until `limit` items
+         collected or the API runs out. `region` is NOT sent to the API
+         (their exact-match misses 'Татарстан' / 'Казань' variants);
+         everything else passes through.
+      2. If `region` is set, drop items whose region array doesn't
+         substring-match it — gives us the same channels as the public
+         "Рейтинг" page.
+      3. Sort by participants_count DESC, assign `rank` starting from 1.
+      4. Cache the whole sorted list 24h, return with `cached_at`.
+
+    On the api_stat_S tier, /channels/search is billed against
+    api_stat_S (not api_search_S). A typical category fetch is
+    ~10-50 API calls per cache refresh.
     """
-    # Cap the requested limit, both to respect the user-passed value and
-    # to enforce MAXDASH_MAX_FETCH against accidents.
     capped_limit = min(max(limit, 0), MAXDASH_MAX_FETCH)
 
     key = _cache_key(
@@ -168,10 +191,9 @@ async def search_channels(
     base_params: dict[str, object] = {"token": token}
     if q:
         base_params["q"] = q
-    if region:
-        base_params["region"] = region
     if category:
         base_params["category"] = category
+    # NB: region intentionally NOT forwarded — handled post-fetch.
     if participants_min is not None:
         base_params["participants_min"] = participants_min
     if participants_max is not None:
@@ -196,11 +218,24 @@ async def search_channels(
         if not isinstance(items, list):
             items = []
         collected.extend(items)
-        # Short page means we've hit the end.
         if len(items) < page_size:
-            break
+            break  # last page
         cur_offset += page_size
         remaining -= page_size
+
+    # Region substring filter (MaxDash region exact-match would miss
+    # most Татарстан variants — see _region_substring_match comment).
+    if region:
+        collected = [it for it in collected if _region_substring_match(it, region)]
+
+    # Sort by participants DESC and assign a stable rank. None / missing
+    # subscriber counts fall to the bottom.
+    collected.sort(
+        key=lambda it: (it.get("participants_count") or 0),
+        reverse=True,
+    )
+    for i, it in enumerate(collected, 1):
+        it["rank"] = i
 
     response = {"count": len(collected), "items": collected}
     _store_cache(db, key, response)
@@ -230,6 +265,7 @@ async def refresh_default_cache(db: Session) -> Optional[dict]:
         db,
         region=settings.maxdash_default_region,
         category=settings.maxdash_default_category,
-        limit=500,
+        participants_min=settings.maxdash_default_participants_min,
+        limit=2000,
         bypass_cache=True,
     )

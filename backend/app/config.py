@@ -32,11 +32,15 @@ class Settings(BaseSettings):
 
     # MaxDash competitors page — defaults for the daily cache refresh.
     # The actual API token is stored in system_settings (root only).
-    # Region defaults to "" — MaxDash matches region by exact string and
-    # the "Республика Татарстан" + category combo only returns ~2 rows.
-    # The category-only view (≈330 rows) matches their public UI page.
-    maxdash_default_region: str = ""
+    # Region defaults to substring "Татарстан" — covers all MaxDash
+    # variants (Казань, Татарстан, Республика Татарстан, районы…).
+    # Filtering happens server-side after fetching the category.
+    maxdash_default_region: str = "Татарстан"
     maxdash_default_category: str = "Новости и СМИ"
+    # Drop channels under this subscriber count from the default cache
+    # refresh — keeps the daily fetch from grabbing thousands of small
+    # channels. Users can override via the UI filter.
+    maxdash_default_participants_min: int = 500
     maxdash_cache_ttl_hours: int = 24
 
     # Google Sheets CSV import (СММ ВЫПЛАТЫ ЗА НОВОСТЬ). Per-sheet gid is
