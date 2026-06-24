@@ -231,8 +231,15 @@ export function Competitors() {
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((r, i) => (
-                  <tr key={(r.username || '') + i}>
+                {pageRows.map((r, i) => {
+                  // Highlight rows for "Светлый"-named channels — these are
+                  // ours, so they stand out from the competitor list.
+                  const isOurs = (r.title || '').toLowerCase().includes('светлый')
+                  return (
+                  <tr
+                    key={(r.username || '') + i}
+                    style={isOurs ? oursRowStyle : undefined}
+                  >
                     <td style={{ ...tdStyle, textAlign: 'right', color: '#8C7B6E' }}>{r.rank ?? '—'}</td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -267,7 +274,8 @@ export function Competitors() {
                     <td style={{ ...tdStyle, textAlign: 'right' }}>{fmt(r.avg_post_reach)}</td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>{r.ci_index ?? '—'}</td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -358,6 +366,11 @@ const tdStyle: CSSProperties = {
   borderBottom: '1px solid #F0E8DE',
   fontSize: 13,
   verticalAlign: 'middle',
+}
+
+const oursRowStyle: CSSProperties = {
+  background: '#C07D4A14',
+  boxShadow: 'inset 3px 0 0 #C07D4A',
 }
 
 const avatarStyle: CSSProperties = {
