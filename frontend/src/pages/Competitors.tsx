@@ -5,7 +5,12 @@ import { SkeletonTable } from '../components/PageSkeleton'
 import { useDebounced } from '../hooks/useDebounced'
 import { useAuth } from '../contexts/AuthContext'
 
-const DEFAULT_REGION = 'Республика Татарстан'
+// Empty region by default — MaxDash matches region by exact string, and
+// 'Республика Татарстан' alone returns only ~5 channels. Their public
+// "Рейтинг каналов — Новости и СМИ" page is category-only, ~330 results;
+// that's the experience we want out of the box. Users add region by hand
+// if they need to narrow.
+const DEFAULT_REGION = ''
 const DEFAULT_CATEGORY = 'Новости и СМИ'
 const PER_PAGE = 25
 

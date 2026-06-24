@@ -32,7 +32,10 @@ class Settings(BaseSettings):
 
     # MaxDash competitors page — defaults for the daily cache refresh.
     # The actual API token is stored in system_settings (root only).
-    maxdash_default_region: str = "Республика Татарстан"
+    # Region defaults to "" — MaxDash matches region by exact string and
+    # the "Республика Татарстан" + category combo only returns ~2 rows.
+    # The category-only view (≈330 rows) matches their public UI page.
+    maxdash_default_region: str = ""
     maxdash_default_category: str = "Новости и СМИ"
     maxdash_cache_ttl_hours: int = 24
 
