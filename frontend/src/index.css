@@ -721,3 +721,42 @@ input[type="date"] {
     grid-template-columns: 1fr 1fr !important;
   }
 }
+
+/* ── Compact one-line filter row (Expenses / Sales / Activity) ───────────── */
+/* Desktop: flex row with fixed-width controls. On mobile each control
+   spans half the width so we get a 2-column grid without falling back
+   to .filters-bar's 1-column stack. */
+.filters-row-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.filters-row-compact > input,
+.filters-row-compact > select {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.filters-row-compact > select {
+  padding-right: 24px;
+}
+
+@media (max-width: 767px) {
+  .filters-row-compact > input,
+  .filters-row-compact > select,
+  .filters-row-compact > .date-range-picker {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    width: auto !important;
+  }
+  /* DateRangePicker is two stacked inputs; on mobile each takes a
+     half-row of its own. */
+  .filters-row-compact > .date-range-picker {
+    flex: 1 1 100%;
+  }
+}

@@ -7,6 +7,7 @@ import { DateRangePicker } from '../components/DateRangePicker'
 import { KebabMenu } from '../components/KebabMenu'
 import { Modal } from '../components/Modal'
 import { Pagination } from '../components/Pagination'
+import { useDebounced } from '../hooks/useDebounced'
 
 const PER_PAGE = 15
 
@@ -117,6 +118,10 @@ export function Sales() {
   const [filters, setFilters] = useState<Filters>(emptyFilters)
   const [rangeError, setRangeError] = useState<string | null>(null)
   const [clientSearch, setClientSearch] = useState('')
+  // 300ms after the user stops typing the search value lands in
+  // filters.client_name and triggers a refetch — same UX as the other
+  // text filters, no separate "Найти" button needed.
+  const debouncedClient = useDebounced(clientSearch, 300)
   const [pageError, setPageError] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -179,9 +184,9 @@ export function Sales() {
     if (res.ok) setSummary(await res.json())
   }
 
-  function applyClientSearch() {
-    setFilters(p => ({ ...p, client_name: clientSearch }))
-  }
+  useEffect(() => {
+    setFilters(p => (p.client_name === debouncedClient ? p : { ...p, client_name: debouncedClient }))
+  }, [debouncedClient])
 
   // ── Create ───────────────────────────────────────────────────────────────
 
@@ -306,26 +311,19 @@ export function Sales() {
         )}
       </div>
 
-      {/* Filters */}
-      <div style={filtersRowStyle} className="filters-bar">
-        <div style={{ display: 'flex', gap: 4 }}>
-          <input
-            placeholder="Поиск по клиенту…"
-            value={clientSearch}
-            onChange={e => setClientSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && applyClientSearch()}
-            style={{ ...filterInputStyle, width: 180 }}
-            className="filter-search-input"
-          />
-          <button onClick={applyClientSearch} style={{ fontSize: 12, padding: '5px 10px' }}>
-            Найти
-          </button>
-        </div>
+      {/* Filters — one compact row */}
+      <div className="filters-row-compact">
+        <input
+          placeholder="Поиск по клиенту"
+          value={clientSearch}
+          onChange={e => setClientSearch(e.target.value)}
+          style={{ width: 160 }}
+        />
 
         <select
           value={filters.channel_id}
           onChange={e => setFilters(p => ({ ...p, channel_id: e.target.value }))}
-          style={filterInputStyle}
+          style={{ width: 160 }}
         >
           <option value="">Все каналы</option>
           {channels.map(ch => (
@@ -338,7 +336,7 @@ export function Sales() {
         <select
           value={filters.status}
           onChange={e => setFilters(p => ({ ...p, status: e.target.value }))}
-          style={filterInputStyle}
+          style={{ width: 150 }}
         >
           <option value="">Все статусы</option>
           <option value="agreed">Согласовано</option>
@@ -348,11 +346,10 @@ export function Sales() {
         </select>
 
         <input
-          placeholder="Поиск по тематике"
+          placeholder="Тематика"
           value={filters.topic}
           onChange={e => setFilters(p => ({ ...p, topic: e.target.value }))}
-          style={{ ...filterInputStyle, width: 180 }}
-          className="filter-search-input"
+          style={{ width: 140 }}
         />
 
         <DateRangePicker

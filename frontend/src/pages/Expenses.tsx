@@ -511,12 +511,12 @@ export function Expenses() {
         )}
       </div>
 
-      {/* Filters */}
-      <div style={filtersRowStyle} className="filters-bar">
+      {/* Filters — one compact row */}
+      <div className="filters-row-compact">
         <select
           value={filters.category}
           onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}
-          style={filterSelectStyle}
+          style={{ width: 180 }}
         >
           <option value="">Все категории</option>
           {CATEGORY_ORDER.map(c => (
@@ -527,7 +527,7 @@ export function Expenses() {
         <select
           value={filters.status}
           onChange={e => setFilters(p => ({ ...p, status: e.target.value }))}
-          style={filterSelectStyle}
+          style={{ width: 150 }}
         >
           <option value="">Все статусы</option>
           <option value="planned">Запланировано</option>
@@ -540,7 +540,7 @@ export function Expenses() {
           placeholder="Ответственный"
           value={filters.responsible}
           onChange={e => setFilters(p => ({ ...p, responsible: e.target.value }))}
-          style={{ ...filterSelectStyle, padding: '5px 8px' }}
+          style={{ width: 160 }}
         />
 
         <DateRangePicker

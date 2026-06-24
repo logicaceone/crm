@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, CSSProperties } from 'react'
 import { apiFetch } from '../lib/api'
 import { SkeletonTable } from '../components/PageSkeleton'
 import { Pagination } from '../components/Pagination'
+import { useDebounced } from '../hooks/useDebounced'
 
 const PER_PAGE = 15
 
@@ -45,8 +46,10 @@ export function Activity() {
 
   const [filterAction, setFilterAction] = useState('')
   const [filterEntity, setFilterEntity] = useState('')
-  const [filterUser, setFilterUser] = useState('')
   const [userInput, setUserInput] = useState('')
+  // 300ms debounce — refetch fires once the user stops typing, the
+  // input itself stays controlled by `userInput`.
+  const filterUser = useDebounced(userInput, 300)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
@@ -98,11 +101,11 @@ export function Activity() {
         <h1 style={{ margin: 0 }}>Действия пользователей</h1>
       </div>
 
-      <div style={filtersRowStyle}>
+      <div className="filters-row-compact">
         <select
           value={filterAction}
           onChange={e => setFilterAction(e.target.value)}
-          style={filterStyle}
+          style={{ width: 180 }}
         >
           <option value="">Все действия</option>
           <option value="create">Создание</option>
@@ -113,7 +116,7 @@ export function Activity() {
         <select
           value={filterEntity}
           onChange={e => setFilterEntity(e.target.value)}
-          style={filterStyle}
+          style={{ width: 150 }}
         >
           <option value="">Все типы</option>
           <option value="expense">Расходы</option>
@@ -124,22 +127,16 @@ export function Activity() {
           <option value="user">Пользователи</option>
         </select>
 
-        <div style={{ display: 'flex', gap: 4 }}>
-          <input
-            placeholder="Фильтр по пользователю…"
-            value={userInput}
-            onChange={e => setUserInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && setFilterUser(userInput)}
-            style={{ ...filterStyle, width: 200 }}
-          />
-          <button onClick={() => setFilterUser(userInput)} style={{ fontSize: 12, padding: '5px 10px' }}>
-            Найти
-          </button>
-        </div>
+        <input
+          placeholder="Фильтр по пользователю"
+          value={userInput}
+          onChange={e => setUserInput(e.target.value)}
+          style={{ width: 200 }}
+        />
 
         {hasFilters && (
           <button
-            onClick={() => { setFilterAction(''); setFilterEntity(''); setFilterUser(''); setUserInput('') }}
+            onClick={() => { setFilterAction(''); setFilterEntity(''); setUserInput('') }}
             style={{ fontSize: 12, color: '#8C7B6E', background: 'none', border: 'none', cursor: 'pointer' }}
           >
             Сбросить
