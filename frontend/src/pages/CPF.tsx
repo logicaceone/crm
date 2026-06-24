@@ -572,7 +572,9 @@ const selectStyle: CSSProperties = {
 }
 
 const presetBtnStyle: CSSProperties = {
-  padding: '5px 12px',
+  height: 36,
+  padding: '0 14px',
+  boxSizing: 'border-box',
   borderRadius: 6,
   border: '1px solid #E8DDD3',
   cursor: 'pointer',

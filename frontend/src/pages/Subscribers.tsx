@@ -300,7 +300,9 @@ const presetsStyle: CSSProperties = {
 }
 
 const presetBtnStyle: CSSProperties = {
-  padding: '6px 14px',
+  height: 36,
+  padding: '0 14px',
+  boxSizing: 'border-box',
   fontSize: 13,
   borderRadius: 8,
   border: '1px solid #E8DDD3',

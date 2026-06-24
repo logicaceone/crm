@@ -215,7 +215,9 @@ export function Dashboard() {
                 key={p.value}
                 onClick={() => applyPreset(p.value)}
                 style={{
-                  padding: '4px 12px',
+                  height: 36,
+                  padding: '0 14px',
+                  boxSizing: 'border-box',
                   borderRadius: 6,
                   border: '1px solid #E8DDD3',
                   cursor: 'pointer',
