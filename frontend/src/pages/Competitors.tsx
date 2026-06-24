@@ -5,10 +5,11 @@ import { SkeletonTable } from '../components/PageSkeleton'
 import { useDebounced } from '../hooks/useDebounced'
 import { useAuth } from '../contexts/AuthContext'
 
-// Default region = "Татарстан" (substring). Server applies it as a
-// case-insensitive substring filter so all MaxDash variants
-// (Казань, Татарстан, Республика Татарстан, районы…) get included.
-const DEFAULT_REGION = 'Татарстан'
+// Default region — comma-separated substrings, server treats them as
+// union. "Казань" alone is needed because some Казань-only channels
+// (Казань Светлый, etc.) have region=['Казань'] without "Татарстан"
+// in the string.
+const DEFAULT_REGION = 'Татарстан,Казань'
 const DEFAULT_CATEGORY = 'Новости и СМИ'
 const PER_PAGE = 25
 

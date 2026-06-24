@@ -129,14 +129,19 @@ MAXDASH_MAX_FETCH = 3000
 
 
 async def _resolve_region_variants(db: Session, needle: str) -> list[str]:
-    """Return MaxDash region names whose name contains `needle`
-    (case-insensitive). For Татарстан that's 20+ names including
-    районы, suburbs, oblast variants — we need each separately
-    because /channels/search only emits `region` data when filtered
-    by an exact region.
+    """Return MaxDash region names whose name contains any of the
+    comma-separated substrings in `needle` (case-insensitive).
 
-    The list itself is cached for 24h so repeated calls don't burn
-    /database/regions quota.
+    Examples:
+      "Татарстан"          → 20+ names containing "Татарстан"
+      "Татарстан,Казань"   → union, dedup'd by exact name
+
+    Multi-substring is the only way to cover region families where
+    MaxDash uses divergent naming for the same place — e.g. "Казань
+    Светлый" lives in region ['Казань'] (no "Татарстан" in that
+    string), so a single Татарстан substring would miss it.
+
+    The resolved list is cached 24h so this doesn't burn quota.
     """
     if not needle:
         return []
@@ -152,10 +157,21 @@ async def _resolve_region_variants(db: Session, needle: str) -> list[str]:
     regs = data.get("response") if isinstance(data, dict) else None
     if not isinstance(regs, list):
         return []
-    n = needle.lower()
-    variants = [r["name"] for r in regs
-                if isinstance(r, dict) and isinstance(r.get("name"), str)
-                and n in r["name"].lower()]
+    needles = [s.strip().lower() for s in needle.split(",") if s.strip()]
+    if not needles:
+        return []
+    variants: list[str] = []
+    seen: set[str] = set()
+    for r in regs:
+        if not isinstance(r, dict):
+            continue
+        name = r.get("name")
+        if not isinstance(name, str):
+            continue
+        lname = name.lower()
+        if any(n in lname for n in needles) and name not in seen:
+            seen.add(name)
+            variants.append(name)
     _store_cache(db, key, {"variants": variants})
     return variants
 

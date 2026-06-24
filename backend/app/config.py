@@ -32,10 +32,11 @@ class Settings(BaseSettings):
 
     # MaxDash competitors page — defaults for the daily cache refresh.
     # The actual API token is stored in system_settings (root only).
-    # Region defaults to substring "Татарстан" — covers all MaxDash
-    # variants (Казань, Татарстан, Республика Татарстан, районы…).
-    # Filtering happens server-side after fetching the category.
-    maxdash_default_region: str = "Татарстан"
+    # Region default — comma-separated substrings, union semantics.
+    # "Казань" is needed because MaxDash tags Казань-only channels
+    # like "Казань Светлый" with region=['Казань'] (without "Татарстан"
+    # in the string), so a single Татарстан substring misses them.
+    maxdash_default_region: str = "Татарстан,Казань"
     maxdash_default_category: str = "Новости и СМИ"
     # Drop channels under this subscriber count from the default cache
     # refresh — keeps the daily fetch from grabbing thousands of small
