@@ -264,6 +264,23 @@ async def _daily_report_job() -> None:
         db.close()
 
 
+async def _maxdash_cache_job() -> None:
+    """Refresh the default MaxDash competitors view in advance.
+
+    Catches its own exceptions so a bad day for MaxDash doesn't take
+    the scheduler down with it. If the token isn't set the service
+    just logs and returns None.
+    """
+    from .services.maxdash import refresh_default_cache
+    db = SessionLocal()
+    try:
+        await refresh_default_cache(db)
+    except Exception as exc:
+        logger.exception("MaxDash cache refresh failed: %s", exc)
+    finally:
+        db.close()
+
+
 async def sync_all_channels(job_id: str = "manual") -> None:
     """Run TG + MAX sync back-to-back in one job.
 
@@ -327,11 +344,20 @@ def start_scheduler() -> None:
         id="sales_sheets_sync_hourly",
         replace_existing=True,
     )
+    # MaxDash competitors cache — refresh the default Tatar+News view
+    # at 04:00 MSK so when somebody opens /competitors during business
+    # hours the data is at most ~6h old without an extra API call.
+    scheduler.add_job(
+        _maxdash_cache_job,
+        CronTrigger(hour=4, minute=0, timezone="Europe/Moscow"),
+        id="maxdash_cache_refresh",
+        replace_existing=True,
+    )
     scheduler.start()
     print(
         "[Scheduler] Started — channel sync 00:00 + 23:50 MSK, "
         f"daily report 23:55 {settings.report_timezone}, "
-        "sheets at :07, sales sheets at :17",
+        "sheets at :07, sales sheets at :17, maxdash cache at 04:00 MSK",
         flush=True,
     )
 

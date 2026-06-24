@@ -180,3 +180,52 @@ async def send_daily_report_test(
                    "REPORT_CHAT_ID и логи backend.",
         )
     return {"status": "sent", "channels": result["channels"]}
+
+
+# ── MaxDash token ───────────────────────────────────────────────────────
+
+class MaxdashTokenStatus(BaseModel):
+    configured: bool
+
+
+class UpdateMaxdashTokenRequest(BaseModel):
+    token: str
+
+
+@router.get("/maxdash-token", response_model=MaxdashTokenStatus)
+def get_maxdash_token_status(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    """Returns whether a token is set — never echoes the token itself.
+
+    The frontend status badge needs to know "configured or not" without
+    being able to read the value back; an attacker who hijacks an admin
+    session shouldn't get the token via a GET.
+    """
+    from ..services.maxdash import get_token
+    return MaxdashTokenStatus(configured=bool(get_token(db)))
+
+
+@router.post("/maxdash-token", response_model=MaxdashTokenStatus)
+def update_maxdash_token(
+    data: UpdateMaxdashTokenRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    token = (data.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="token is empty")
+    from ..services.maxdash import set_token
+    set_token(db, token)
+    return MaxdashTokenStatus(configured=True)
+
+
+@router.delete("/maxdash-token", response_model=MaxdashTokenStatus)
+def delete_maxdash_token(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    from ..services.maxdash import set_token
+    set_token(db, None)
+    return MaxdashTokenStatus(configured=False)

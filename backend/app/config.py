@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     report_chat_id: Optional[str] = None
     report_timezone: str = "Europe/Moscow"
 
+    # MaxDash competitors page — defaults for the daily cache refresh.
+    # The actual API token is stored in system_settings (root only).
+    maxdash_default_region: str = "Республика Татарстан"
+    maxdash_default_category: str = "Новости и СМИ"
+    maxdash_cache_ttl_hours: int = 24
+
     # Google Sheets CSV import (СММ ВЫПЛАТЫ ЗА НОВОСТЬ). Per-sheet gid is
     # appended to sheets_base_url to fetch the CSV export. The hourly job
     # is gated on sheets_sync_enabled so we can disable it without code.

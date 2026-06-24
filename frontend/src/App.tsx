@@ -17,6 +17,7 @@ import { Activity } from './pages/Activity'
 import { Settings } from './pages/Settings'
 import { Subscribers } from './pages/Subscribers'
 import { CPF } from './pages/CPF'
+import { Competitors } from './pages/Competitors'
 import { Sheets } from './pages/Sheets'
 
 export default function App() {
@@ -95,6 +96,14 @@ export default function App() {
               element={
                 <RoleRoute allowedRoles={['root', 'admin', 'manager']}>
                   <CPF />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/competitors"
+              element={
+                <RoleRoute allowedRoles={['root', 'admin', 'manager', 'viewer']}>
+                  <Competitors />
                 </RoleRoute>
               }
             />

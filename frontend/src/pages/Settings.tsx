@@ -35,13 +35,19 @@ export function Settings() {
   const [reportSaving, setReportSaving] = useState(false)
   const [reportSending, setReportSending] = useState(false)
 
+  const [maxdashConfigured, setMaxdashConfigured] = useState(false)
+  const [maxdashInput, setMaxdashInput] = useState('')
+  const [maxdashSaving, setMaxdashSaving] = useState(false)
+  const [maxdashChecking, setMaxdashChecking] = useState(false)
+
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
-    const [sRes, rRes] = await Promise.all([
+    const [sRes, rRes, mRes] = await Promise.all([
       apiFetch('/api/settings'),
       apiFetch('/api/settings/daily-report'),
+      apiFetch('/api/settings/maxdash-token'),
     ])
     if (sRes.ok) {
       const d: SettingsData = await sRes.json()
@@ -51,7 +57,66 @@ export function Settings() {
       setMaxSample(d.max_posts_sample)
     }
     if (rRes.ok) setReport(await rRes.json())
+    if (mRes.ok) {
+      const d = await mRes.json() as { configured: boolean }
+      setMaxdashConfigured(d.configured)
+    }
     setLoading(false)
+  }
+
+  async function saveMaxdashToken() {
+    const token = maxdashInput.trim()
+    if (!token) return
+    setMaxdashSaving(true)
+    try {
+      const res = await apiFetch('/api/settings/maxdash-token', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail || 'Не удалось сохранить токен')
+        return
+      }
+      setMaxdashConfigured(true)
+      setMaxdashInput('')
+      toast.success('Токен MaxDash сохранён')
+    } finally {
+      setMaxdashSaving(false)
+    }
+  }
+
+  async function deleteMaxdashToken() {
+    setMaxdashSaving(true)
+    try {
+      const res = await apiFetch('/api/settings/maxdash-token', { method: 'DELETE' })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail || 'Не удалось удалить токен')
+        return
+      }
+      setMaxdashConfigured(false)
+      toast.success('Токен MaxDash удалён')
+    } finally {
+      setMaxdashSaving(false)
+    }
+  }
+
+  async function checkMaxdashToken() {
+    setMaxdashChecking(true)
+    try {
+      const res = await apiFetch('/api/maxdash/check')
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(body.detail || 'Токен недействителен')
+        return
+      }
+      // MaxDash returns the plan name + counters; surface what we have.
+      const plan = body?.response?.tariff || body?.tariff || body?.plan || 'OK'
+      toast.success(`Подключено, тариф: ${plan}`)
+    } finally {
+      setMaxdashChecking(false)
+    }
   }
 
   async function toggleReport(enabled: boolean) {
@@ -258,6 +323,68 @@ export function Settings() {
           </>
         ) : (
           <div style={{ fontSize: 13, color: '#8C7B6E' }}>Загрузка…</div>
+        )}
+      </section>
+
+      <section style={{ ...sectionStyle, marginTop: 24 }}>
+        <h2 style={sectionTitleStyle}>MaxDash API</h2>
+        <p style={hintStyle}>
+          Токен используется для получения рейтинга каналов MAX на странице «Конкуренты MAX».
+          Сам токен не возвращается обратно после сохранения — только статус «настроен».
+        </p>
+
+        {maxdashConfigured ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{
+                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                background: '#16a34a',
+              }} />
+              <span style={{ fontSize: 14, fontWeight: 500 }}>Токен настроен</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={checkMaxdashToken}
+                disabled={maxdashChecking}
+                style={{ minWidth: 120 }}
+              >
+                {maxdashChecking ? 'Проверка…' : 'Проверить'}
+              </button>
+              <button
+                type="button"
+                onClick={deleteMaxdashToken}
+                disabled={maxdashSaving}
+                style={{
+                  minWidth: 140,
+                  background: 'transparent',
+                  border: '1px solid #dc2626',
+                  color: '#dc2626',
+                }}
+              >
+                Удалить токен
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="Токен MaxDash"
+              value={maxdashInput}
+              onChange={e => setMaxdashInput(e.target.value)}
+              style={{ flex: '1 1 280px', minWidth: 200 }}
+            />
+            <button
+              type="button"
+              onClick={saveMaxdashToken}
+              disabled={maxdashSaving || !maxdashInput.trim()}
+              style={{ minWidth: 120 }}
+            >
+              {maxdashSaving ? 'Сохранение…' : 'Сохранить'}
+            </button>
+          </div>
         )}
       </section>
     </div>

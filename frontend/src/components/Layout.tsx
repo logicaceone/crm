@@ -16,6 +16,7 @@ const MENU: MenuItem[] = [
   { to: '/sales', label: 'Продажи', roles: ['root', 'admin', 'manager'] },
   { to: '/budget', label: 'Бюджет', roles: ['root', 'admin', 'manager'] },
   { to: '/cpf', label: 'Аналитика CPF', roles: ['root', 'admin', 'manager'] },
+  { to: '/competitors', label: 'Конкуренты MAX', roles: ['root', 'admin', 'manager', 'viewer'] },
   { to: '/users', label: 'Пользователи', roles: ['root', 'admin'] },
   { to: '/activity', label: 'Действия', roles: ['root', 'admin'] },
   { to: '/settings', label: 'Настройки', roles: ['root'] },
