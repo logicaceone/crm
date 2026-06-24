@@ -722,6 +722,32 @@ input[type="date"] {
   }
 }
 
+/* ── Dashboard subscriber-groups grid ────────────────────────────────────── */
+/* 5 cards: 5-col on wide screens, 3-col on mid, 2-col on mobile so the
+   5th card stays neatly aligned without a lonely single-cell row. */
+.subs-groups-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1199px) {
+  .subs-groups-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .subs-groups-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  /* Last (5th) card spans the whole bottom row on mobile. */
+  .subs-groups-grid > :nth-child(5) {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ── Compact one-line filter row (Expenses / Sales / Activity) ───────────── */
 /* Desktop: flex row with fixed-width controls. On mobile each control
    spans half the width so we get a 2-column grid without falling back

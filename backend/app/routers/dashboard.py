@@ -1,8 +1,8 @@
 from datetime import date, timedelta
-from typing import Optional
+from typing import Optional, Sequence
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, and_
+from sqlalchemy.orm import Session, aliased
 
 from ..database import get_db
 from ..models.channel import Channel, ChannelStat, ChannelPlatform
@@ -66,6 +66,95 @@ def dashboard_summary(
         "margin_pct": round(margin_pct, 2),
         "sales_count": sales_count,
         "expenses_count": expenses_count,
+    }
+
+
+def _group_subscribers(
+    db: Session,
+    *,
+    platforms: Optional[Sequence[ChannelPlatform]],
+    name_patterns: Sequence[str],
+) -> dict:
+    """Aggregate first/last subscriber count across channels matching
+    platforms + ILIKE name patterns.
+
+    Per-channel min/max date is computed once in a subquery, then joined
+    back to ChannelStat twice (aliased) to pull the actual counts.
+    (channel_id, date) is unique on ChannelStat, so each join yields at
+    most one row per channel — the SUMs aren't inflated by duplicates.
+
+    Channels with no snapshots are excluded by the inner join. A
+    channel with a single snapshot still appears: first == last and
+    growth comes out to 0, which is the desired "no history" behaviour.
+    """
+    pc = (
+        db.query(
+            ChannelStat.channel_id.label("channel_id"),
+            func.min(ChannelStat.date).label("min_date"),
+            func.max(ChannelStat.date).label("max_date"),
+        )
+        .filter(ChannelStat.subscribers_count.isnot(None))
+        .group_by(ChannelStat.channel_id)
+        .subquery()
+    )
+    first_s = aliased(ChannelStat)
+    last_s = aliased(ChannelStat)
+
+    name_or = or_(*(Channel.name.ilike(p) for p in name_patterns))
+    where = [name_or]
+    if platforms:
+        where.append(Channel.platform.in_(platforms))
+
+    rows = (
+        db.query(
+            first_s.subscribers_count.label("first"),
+            last_s.subscribers_count.label("last"),
+        )
+        .select_from(Channel)
+        .join(pc, pc.c.channel_id == Channel.id)
+        .join(first_s, and_(first_s.channel_id == Channel.id,
+                            first_s.date == pc.c.min_date))
+        .join(last_s, and_(last_s.channel_id == Channel.id,
+                           last_s.date == pc.c.max_date))
+        .filter(*where)
+        .all()
+    )
+
+    current = sum(int(r.last or 0) for r in rows)
+    first = sum(int(r.first or 0) for r in rows)
+    return {
+        "current": current,
+        "first": first,
+        "growth": current - first,
+        "channels_count": len(rows),
+    }
+
+
+@router.get("/subscribers-summary")
+def dashboard_subscribers_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Five named groups of channels: TG Светлый, TG Тёмный, TG light+dark,
+    MAX Светлый, all-platforms Светлый. For each group: current
+    subscribers (sum of latest snapshots), first subscribers (sum of
+    earliest snapshots), growth, and channel count.
+
+    Name matching is ILIKE so it stays diacritic-aware ('Тёмный' and
+    'Темный' are both passed in explicitly).
+    """
+    tg = [ChannelPlatform.telegram]
+    mx = [ChannelPlatform.max]
+    LIGHT = ["%Светлый%"]
+    DARK = ["%Темный%", "%Тёмный%"]
+    LIGHT_AND_DARK = LIGHT + DARK
+
+    return {
+        "tg_light": _group_subscribers(db, platforms=tg, name_patterns=LIGHT),
+        "tg_dark": _group_subscribers(db, platforms=tg, name_patterns=DARK),
+        "tg_light_and_dark": _group_subscribers(db, platforms=tg, name_patterns=LIGHT_AND_DARK),
+        "max_light": _group_subscribers(db, platforms=mx, name_patterns=LIGHT),
+        "all_light": _group_subscribers(db, platforms=None, name_patterns=LIGHT),
     }
 
 

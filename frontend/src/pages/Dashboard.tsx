@@ -67,6 +67,21 @@ interface Channel {
   platform?: 'telegram' | 'max'
 }
 
+interface SubscribersGroup {
+  current: number
+  first: number
+  growth: number
+  channels_count: number
+}
+
+interface SubscribersGroups {
+  tg_light: SubscribersGroup
+  tg_dark: SubscribersGroup
+  tg_light_and_dark: SubscribersGroup
+  max_light: SubscribersGroup
+  all_light: SubscribersGroup
+}
+
 type Preset = 'month' | '30d' | '90d'
 
 const PRESETS: { label: string; value: Preset }[] = [
@@ -144,6 +159,7 @@ export function Dashboard() {
   const [topChannels, setTopChannels] = useState<TopChannel[]>([])
   const [recentExpenses, setRecentExpenses] = useState<RecentExpense[]>([])
   const [recentSales, setRecentSales] = useState<RecentSale[]>([])
+  const [subsGroups, setSubsGroups] = useState<SubscribersGroups | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -170,14 +186,16 @@ export function Dashboard() {
 
   async function loadStatic() {
     setLoading(true)
-    const [topRes, expRes, saleRes] = await Promise.all([
+    const [topRes, expRes, saleRes, subsRes] = await Promise.all([
       apiFetch('/api/dashboard/top-channels'),
       apiFetch('/api/dashboard/recent-expenses'),
       apiFetch('/api/dashboard/recent-sales'),
+      apiFetch('/api/dashboard/subscribers-summary'),
     ])
     if (topRes.ok) setTopChannels(await topRes.json())
     if (expRes.ok) setRecentExpenses(await expRes.json())
     if (saleRes.ok) setRecentSales(await saleRes.json())
+    if (subsRes.ok) setSubsGroups(await subsRes.json())
     setLoading(false)
   }
 
@@ -258,6 +276,19 @@ export function Dashboard() {
           currency="%"
           accent={!summary ? '#8C7B6E' : summary.margin_pct >= 0 ? '#16a34a' : '#dc2626'}
         />
+      </div>
+
+      {/* Subscriber groups — independent of the date filter (always
+          "all time" growth from the earliest to the latest snapshot). */}
+      <div style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: 600, color: '#2C2B28' }}>
+        Аудитория по группам
+      </div>
+      <div className="subs-groups-grid">
+        <SubsCard title="TG Светлый" data={subsGroups?.tg_light} />
+        <SubsCard title="TG Тёмный" data={subsGroups?.tg_dark} />
+        <SubsCard title="TG Светлый + Тёмный" data={subsGroups?.tg_light_and_dark} />
+        <SubsCard title="MAX Светлый" data={subsGroups?.max_light} />
+        <SubsCard title="TG и MAX Светлый" data={subsGroups?.all_light} />
       </div>
 
       {/* Top channels — full width, 3-card grid */}
@@ -386,6 +417,48 @@ export function Dashboard() {
   )
 }
 
+function SubsCard({ title, data }: { title: string; data?: SubscribersGroup }) {
+  // No data yet — render a muted placeholder with the same footprint so
+  // the grid doesn't jump after the fetch resolves.
+  if (!data) {
+    return (
+      <div style={subsCardStyle}>
+        <div style={subsTitleStyle}>{title}</div>
+        <div style={{ ...subsValueStyle, color: '#D4B896' }}>—</div>
+        <div style={{ height: 16 }} />
+        <div style={subsCountStyle}>&nbsp;</div>
+      </div>
+    )
+  }
+  const positive = data.growth > 0
+  const negative = data.growth < 0
+  const arrow = positive ? '↑' : negative ? '↓' : ''
+  const growthColor = positive ? '#16a34a' : negative ? '#dc2626' : '#8C7B6E'
+  return (
+    <div style={subsCardStyle}>
+      <div style={subsTitleStyle}>{title}</div>
+      <div style={subsValueStyle}>{fmt(data.current)}</div>
+      <div style={{ ...subsGrowthStyle, color: growthColor }}>
+        {arrow && <span style={{ marginRight: 4 }}>{arrow}</span>}
+        {data.growth === 0
+          ? 'без изменений'
+          : `${positive ? '+' : ''}${fmt(data.growth)} за всё время`}
+      </div>
+      <div style={subsCountStyle}>{data.channels_count} {channelsWord(data.channels_count)}</div>
+    </div>
+  )
+}
+
+function channelsWord(n: number): string {
+  // Russian plural: 1 канал, 2-4 канала, 5+ каналов.
+  const mod100 = n % 100
+  const mod10 = n % 10
+  if (mod100 >= 11 && mod100 <= 14) return 'каналов'
+  if (mod10 === 1) return 'канал'
+  if (mod10 >= 2 && mod10 <= 4) return 'канала'
+  return 'каналов'
+}
+
 function KpiCard({ label, value, currency, accent, sub }: {
   label: string
   value: string
@@ -415,6 +488,45 @@ const kpiCardStyle: CSSProperties = {
   border: '1px solid #E8DDD3',
   borderRadius: 8,
   padding: '16px 20px',
+}
+
+const subsCardStyle: CSSProperties = {
+  background: '#FEFEFE',
+  border: '1px solid #E8DDD3',
+  borderRadius: 8,
+  padding: '14px 18px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  minWidth: 0,
+}
+
+const subsTitleStyle: CSSProperties = {
+  fontSize: 12,
+  color: '#8C7B6E',
+  fontWeight: 500,
+  letterSpacing: '0.02em',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+}
+
+const subsValueStyle: CSSProperties = {
+  fontSize: 22,
+  fontWeight: 700,
+  color: '#2C2B28',
+  lineHeight: 1.2,
+}
+
+const subsGrowthStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 500,
+}
+
+const subsCountStyle: CSSProperties = {
+  fontSize: 11,
+  color: '#D4B896',
+  marginTop: 2,
 }
 
 const topGridStyle: CSSProperties = {
