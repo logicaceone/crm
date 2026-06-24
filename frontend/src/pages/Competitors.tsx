@@ -92,7 +92,7 @@ export function Competitors() {
     params.set('category', category)
     if (minSubs) params.set('participants_min', minSubs)
     if (maxSubs) params.set('participants_max', maxSubs)
-    params.set('limit', '100')
+    params.set('limit', '500')
 
     apiFetch(`/api/competitors/search?${params.toString()}`)
       .then(async res => {

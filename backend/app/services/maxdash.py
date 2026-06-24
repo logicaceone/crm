@@ -120,6 +120,14 @@ async def _api_get(path: str, params: dict, timeout: float = 30.0) -> dict:
         raise MaxdashError(f"Bad JSON from MaxDash: {exc}") from exc
 
 
+# MaxDash caps a single `/channels/search` call at 30 items regardless
+# of the requested limit. Iterate offset to collect more, just like
+# their own web UI does internally.
+MAXDASH_PAGE_SIZE = 30
+# Safety cap so a misconfigured client can't drain the monthly quota.
+MAXDASH_MAX_FETCH = 1000
+
+
 async def search_channels(
     db: Session,
     *,
@@ -128,20 +136,25 @@ async def search_channels(
     category: Optional[str] = None,
     participants_min: Optional[int] = None,
     participants_max: Optional[int] = None,
-    limit: int = 100,
+    limit: int = 300,
     offset: int = 0,
     bypass_cache: bool = False,
 ) -> dict:
-    """Return MaxDash channels-search response, either from cache or
-    via a fresh API call (which is then cached for ttl).
+    """Return a flattened MaxDash channels-search response.
 
-    The returned dict carries `cached_at` so the UI can show when the
-    data was last refreshed.
+    MaxDash limits each /channels/search hit to 30 items; we loop the
+    offset until `limit` is reached or the API runs out of results.
+    The full set is cached for 24h under one key, so paging inside the
+    UI is free (works on local data).
     """
+    # Cap the requested limit, both to respect the user-passed value and
+    # to enforce MAXDASH_MAX_FETCH against accidents.
+    capped_limit = min(max(limit, 0), MAXDASH_MAX_FETCH)
+
     key = _cache_key(
         q=q, region=region, category=category,
         participants_min=participants_min, participants_max=participants_max,
-        limit=limit, offset=offset,
+        limit=capped_limit, offset=offset,
     )
     if not bypass_cache:
         cached = _get_cached(db, key)
@@ -152,29 +165,45 @@ async def search_channels(
     if not token:
         raise MaxdashNotConfigured("MaxDash token is not set")
 
-    params: dict[str, object] = {"token": token, "limit": limit, "offset": offset}
+    base_params: dict[str, object] = {"token": token}
     if q:
-        params["q"] = q
+        base_params["q"] = q
     if region:
-        params["region"] = region
+        base_params["region"] = region
     if category:
-        params["category"] = category
+        base_params["category"] = category
     if participants_min is not None:
-        params["participants_min"] = participants_min
+        base_params["participants_min"] = participants_min
     if participants_max is not None:
-        params["participants_max"] = participants_max
+        base_params["participants_max"] = participants_max
 
-    raw = await _api_get("/channels/search", params)
-    # MaxDash wraps results in {"response": {...}}; tolerate either form.
-    response = raw.get("response") if isinstance(raw, dict) else None
-    if response is None:
-        response = raw
-    if not isinstance(response, dict):
-        raise MaxdashError(f"Unexpected MaxDash payload shape: {type(response).__name__}")
+    collected: list[dict] = []
+    cur_offset = offset
+    remaining = capped_limit
 
+    while remaining > 0:
+        page_size = min(remaining, MAXDASH_PAGE_SIZE)
+        params = {**base_params, "limit": page_size, "offset": cur_offset}
+        raw = await _api_get("/channels/search", params)
+        page_response = raw.get("response") if isinstance(raw, dict) else None
+        if page_response is None:
+            page_response = raw
+        if not isinstance(page_response, dict):
+            raise MaxdashError(
+                f"Unexpected MaxDash payload shape: {type(page_response).__name__}"
+            )
+        items = page_response.get("items") or page_response.get("channels") or []
+        if not isinstance(items, list):
+            items = []
+        collected.extend(items)
+        # Short page means we've hit the end.
+        if len(items) < page_size:
+            break
+        cur_offset += page_size
+        remaining -= page_size
+
+    response = {"count": len(collected), "items": collected}
     _store_cache(db, key, response)
-    # Echo cached_at to the caller so the first request also gets the
-    # 'as of' timestamp.
     response = {**response, "cached_at": datetime.now(timezone.utc).isoformat()}
     return response
 
@@ -201,6 +230,6 @@ async def refresh_default_cache(db: Session) -> Optional[dict]:
         db,
         region=settings.maxdash_default_region,
         category=settings.maxdash_default_category,
-        limit=100,
+        limit=500,
         bypass_cache=True,
     )
