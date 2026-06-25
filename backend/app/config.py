@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     # region tag wouldn't otherwise match the regional filter.
     # Comma-separated; matched via /channels/search?q=<term>.
     maxdash_brand_keywords: str = "Светлый"
+
+    # ── Daily DB backup → Telegram ────────────────────────────────
+    # Reuses REPORT_BOT_TOKEN (with TELEGRAM_BOT_TOKEN fallback) so
+    # operators don't need a second bot. Chat id is read from .env
+    # as a default but can be overridden in the UI via system_settings.
+    backup_enabled: bool = True
+    backup_telegram_chat_id: Optional[str] = None
+    backup_keep_days: int = 30
     maxdash_cache_ttl_hours: int = 24
 
     # Google Sheets CSV import (СММ ВЫПЛАТЫ ЗА НОВОСТЬ). Per-sheet gid is

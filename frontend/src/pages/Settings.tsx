@@ -40,14 +40,27 @@ export function Settings() {
   const [maxdashSaving, setMaxdashSaving] = useState(false)
   const [maxdashChecking, setMaxdashChecking] = useState(false)
 
+  interface BackupConfig {
+    enabled: boolean
+    chat_id_set: boolean
+    chat_id_masked: string | null
+    schedule: string
+    keep_days: number
+  }
+  const [backup, setBackup] = useState<BackupConfig | null>(null)
+  const [backupChatIdInput, setBackupChatIdInput] = useState('')
+  const [backupSaving, setBackupSaving] = useState(false)
+  const [backupRunning, setBackupRunning] = useState(false)
+
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
-    const [sRes, rRes, mRes] = await Promise.all([
+    const [sRes, rRes, mRes, bRes] = await Promise.all([
       apiFetch('/api/settings'),
       apiFetch('/api/settings/daily-report'),
       apiFetch('/api/settings/maxdash-token'),
+      apiFetch('/api/settings/backup'),
     ])
     if (sRes.ok) {
       const d: SettingsData = await sRes.json()
@@ -61,7 +74,47 @@ export function Settings() {
       const d = await mRes.json() as { configured: boolean }
       setMaxdashConfigured(d.configured)
     }
+    if (bRes.ok) setBackup(await bRes.json())
     setLoading(false)
+  }
+
+  async function saveBackupChatId() {
+    const chat_id = backupChatIdInput.trim()
+    setBackupSaving(true)
+    try {
+      const res = await apiFetch('/api/settings/backup-chat-id', {
+        method: 'PATCH',
+        body: JSON.stringify({ chat_id: chat_id || null }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail || 'Не удалось сохранить chat ID')
+        return
+      }
+      setBackup(await res.json())
+      setBackupChatIdInput('')
+      toast.success(chat_id ? 'Chat ID сохранён' : 'Chat ID очищен')
+    } finally {
+      setBackupSaving(false)
+    }
+  }
+
+  async function runBackupNow() {
+    setBackupRunning(true)
+    try {
+      const res = await apiFetch('/api/settings/backup/run', { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(body.detail || 'Не удалось создать бэкап')
+        return
+      }
+      const sent = body.sent_to_telegram ? ', отправлен в Telegram' : ''
+      toast.success(
+        `✅ ${body.file} (${body.size_mb} MB)${sent}`
+      )
+    } finally {
+      setBackupRunning(false)
+    }
   }
 
   async function saveMaxdashToken() {
@@ -385,6 +438,80 @@ export function Settings() {
               {maxdashSaving ? 'Сохранение…' : 'Сохранить'}
             </button>
           </div>
+        )}
+      </section>
+
+      <section style={{ ...sectionStyle, marginTop: 24 }}>
+        <h2 style={sectionTitleStyle}>Резервные копии</h2>
+        <p style={hintStyle}>
+          Ежедневно в 03:00 МСК backend снимает дамп PostgreSQL, gzip и
+          шлёт файл в Telegram-чат через тот же бот, что и дейли отчёт.
+          Локальные копии старше {backup?.keep_days ?? 30} дней удаляются.
+        </p>
+
+        {backup ? (
+          <>
+            <div style={readOnlyRowStyle}>
+              <span style={readOnlyLabelStyle}>Автобэкап</span>
+              <span style={readOnlyValueStyle}>
+                {backup.enabled
+                  ? <span style={{ color: '#16a34a' }}>активен — {backup.schedule}</span>
+                  : <span style={{ color: '#8C7B6E' }}>выключен (BACKUP_ENABLED=false)</span>}
+              </span>
+            </div>
+            <div style={readOnlyRowStyle}>
+              <span style={readOnlyLabelStyle}>Chat ID</span>
+              <span style={readOnlyValueStyle}>
+                {backup.chat_id_set
+                  ? <code>{backup.chat_id_masked}</code>
+                  : <span style={{ color: '#dc2626' }}>не задан</span>}
+              </span>
+            </div>
+
+            <label style={{ ...labelStyle, marginTop: 16 }}>
+              Chat ID для бэкапов
+              <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="-100xxxxxxxxxx"
+                  value={backupChatIdInput}
+                  onChange={e => setBackupChatIdInput(e.target.value)}
+                  style={{ flex: '1 1 240px', minWidth: 200 }}
+                />
+                <button
+                  type="button"
+                  onClick={saveBackupChatId}
+                  disabled={backupSaving}
+                  style={{ minWidth: 120 }}
+                >
+                  {backupSaving ? 'Сохранение…' : 'Сохранить'}
+                </button>
+              </div>
+              <span style={{ fontSize: 12, color: '#8C7B6E', marginTop: 4 }}>
+                Узнать ID: добавить бота в чат, написать любое сообщение,
+                открыть https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates,
+                найти <code>"chat":&#123;"id": ...&#125;</code>.
+              </span>
+            </label>
+
+            <div style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={runBackupNow}
+                disabled={backupRunning || !backup.chat_id_set}
+                style={{ minWidth: 200 }}
+              >
+                {backupRunning ? 'Создаём бэкап…' : 'Создать бэкап сейчас'}
+              </button>
+              {!backup.chat_id_set && (
+                <span style={{ fontSize: 12, color: '#8C7B6E', marginLeft: 10 }}>
+                  Сначала задайте Chat ID
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: '#8C7B6E' }}>Загрузка…</div>
         )}
       </section>
     </div>

@@ -229,3 +229,62 @@ def delete_maxdash_token(
     from ..services.maxdash import set_token
     set_token(db, None)
     return MaxdashTokenStatus(configured=False)
+
+
+# ── DB backup ───────────────────────────────────────────────────────────
+
+class BackupConfig(BaseModel):
+    enabled: bool
+    chat_id_set: bool
+    chat_id_masked: Optional[str]
+    schedule: str  # e.g. "03:00 Europe/Moscow"
+    keep_days: int
+
+
+class UpdateBackupChatIdRequest(BaseModel):
+    chat_id: Optional[str] = None  # None or "" clears
+
+
+@router.get("/backup", response_model=BackupConfig)
+def get_backup_config(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    from ..services.backup import get_backup_chat_id
+    chat_id = get_backup_chat_id(db)
+    masked = None
+    if chat_id:
+        masked = f"…{chat_id[-4:]}" if len(chat_id) > 4 else chat_id
+    return BackupConfig(
+        enabled=settings.backup_enabled,
+        chat_id_set=bool(chat_id),
+        chat_id_masked=masked,
+        schedule="03:00 Europe/Moscow",
+        keep_days=settings.backup_keep_days,
+    )
+
+
+@router.patch("/backup-chat-id", response_model=BackupConfig)
+def update_backup_chat_id(
+    data: UpdateBackupChatIdRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    from ..services.backup import set_backup_chat_id
+    value = (data.chat_id or "").strip() or None
+    set_backup_chat_id(db, value)
+    return get_backup_config(db=db, _=None)  # type: ignore[arg-type]
+
+
+@router.post("/backup/run")
+async def run_backup_now(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    """Manual trigger. Same pipeline as the 03:00 cron — useful for
+    smoke testing the bot token + chat id after setup."""
+    from ..services.backup import run_backup
+    result = await run_backup(db)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("error", "Backup failed"))
+    return result

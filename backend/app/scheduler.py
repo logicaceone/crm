@@ -264,6 +264,21 @@ async def _daily_report_job() -> None:
         db.close()
 
 
+async def _backup_job() -> None:
+    """Wrapper: own its DB session, swallow exceptions so a bad
+    backup doesn't take the whole scheduler down. The service itself
+    already logs and notifies on failure."""
+    from .services.backup import run_backup
+    db = SessionLocal()
+    try:
+        result = await run_backup(db)
+        logger.info("Backup job result: %s", result)
+    except Exception as exc:
+        logger.exception("Backup job crashed: %s", exc)
+    finally:
+        db.close()
+
+
 async def _maxdash_cache_job() -> None:
     """Refresh the default MaxDash competitors view in advance.
 
@@ -353,11 +368,20 @@ def start_scheduler() -> None:
         id="maxdash_cache_refresh",
         replace_existing=True,
     )
+    # Nightly DB backup at 03:00 MSK — before the channel sync and
+    # daily report so the dump captures yesterday's state cleanly.
+    scheduler.add_job(
+        _backup_job,
+        CronTrigger(hour=3, minute=0, timezone="Europe/Moscow"),
+        id="db_backup",
+        replace_existing=True,
+    )
     scheduler.start()
     print(
         "[Scheduler] Started — channel sync 00:00 + 23:50 MSK, "
         f"daily report 23:55 {settings.report_timezone}, "
-        "sheets at :07, sales sheets at :17, maxdash cache at 04:00 MSK",
+        "sheets at :07, sales sheets at :17, maxdash cache at 04:00 MSK, "
+        "db backup at 03:00 MSK",
         flush=True,
     )
 
