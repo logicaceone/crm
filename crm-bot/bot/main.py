@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import settings
+from bot.handlers import expense as expense_handler
 from bot.handlers import start as start_handler
 
 
@@ -22,7 +23,7 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
 
     dp.include_router(start_handler.router)
-    # dp.include_router(expense.router)   <- next step
+    dp.include_router(expense_handler.router)
     # dp.include_router(cancel.router)    <- step 8
 
     logger.info("Bot polling started")

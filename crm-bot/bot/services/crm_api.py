@@ -55,3 +55,11 @@ async def crm_post(path: str, json: dict[str, Any]) -> Optional[Any]:
         return r.json()
     except ValueError:
         return None
+
+
+async def get_channels() -> Optional[list[dict]]:
+    return await crm_get("/bot/channels")
+
+
+async def create_expense(payload: dict) -> Optional[dict]:
+    return await crm_post("/bot/expenses", payload)
