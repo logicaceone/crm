@@ -1,7 +1,9 @@
 import { useState, useEffect, FormEvent, CSSProperties } from 'react'
 import { useToast } from '../contexts/ToastContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { apiFetch } from '../lib/api'
 import { SkeletonCards } from '../components/PageSkeleton'
+import { Modal } from '../components/Modal'
 
 interface SettingsData {
   telegram_bot_token_set: boolean
@@ -19,6 +21,7 @@ interface DailyReportConfig {
 
 export function Settings() {
   const toast = useToast()
+  const confirm = useConfirm()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
@@ -40,6 +43,12 @@ export function Settings() {
   const [maxdashSaving, setMaxdashSaving] = useState(false)
   const [maxdashChecking, setMaxdashChecking] = useState(false)
 
+  const [botKeyConfigured, setBotKeyConfigured] = useState(false)
+  const [generatedKey, setGeneratedKey] = useState<string | null>(null)
+  const [showKeyModal, setShowKeyModal] = useState(false)
+  const [isGeneratingBotKey, setIsGeneratingBotKey] = useState(false)
+  const [isDeletingBotKey, setIsDeletingBotKey] = useState(false)
+
   interface BackupConfig {
     enabled: boolean
     chat_id_set: boolean
@@ -56,11 +65,12 @@ export function Settings() {
 
   async function load() {
     setLoading(true)
-    const [sRes, rRes, mRes, bRes] = await Promise.all([
+    const [sRes, rRes, mRes, bRes, kRes] = await Promise.all([
       apiFetch('/api/settings'),
       apiFetch('/api/settings/daily-report'),
       apiFetch('/api/settings/maxdash-token'),
       apiFetch('/api/settings/backup'),
+      apiFetch('/api/settings/bot-api-key'),
     ])
     if (sRes.ok) {
       const d: SettingsData = await sRes.json()
@@ -75,7 +85,68 @@ export function Settings() {
       setMaxdashConfigured(d.configured)
     }
     if (bRes.ok) setBackup(await bRes.json())
+    if (kRes.ok) {
+      const d = await kRes.json() as { configured: boolean }
+      setBotKeyConfigured(d.configured)
+    }
     setLoading(false)
+  }
+
+  async function generateBotKey() {
+    setIsGeneratingBotKey(true)
+    try {
+      const res = await apiFetch('/api/settings/bot-api-key', { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(body.detail || 'Ошибка генерации ключа')
+        return
+      }
+      setGeneratedKey(body.key)
+      setBotKeyConfigured(true)
+      setShowKeyModal(true)
+    } finally {
+      setIsGeneratingBotKey(false)
+    }
+  }
+
+  async function handleRegenerateBotKey() {
+    const ok = await confirm({
+      message: 'Пересгенерировать ключ? Бот перестанет работать до обновления BOT_API_KEY в .env',
+      confirmLabel: 'Пересгенерировать',
+    })
+    if (!ok) return
+    await generateBotKey()
+  }
+
+  async function handleDeleteBotKey() {
+    const ok = await confirm({
+      message: 'Удалить API ключ? Бот немедленно потеряет доступ к CRM.',
+      confirmLabel: 'Удалить',
+    })
+    if (!ok) return
+    setIsDeletingBotKey(true)
+    try {
+      const res = await apiFetch('/api/settings/bot-api-key', { method: 'DELETE' })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail || 'Ошибка удаления')
+        return
+      }
+      setBotKeyConfigured(false)
+      toast.success('Ключ удалён')
+    } finally {
+      setIsDeletingBotKey(false)
+    }
+  }
+
+  async function copyGeneratedKey() {
+    if (!generatedKey) return
+    try {
+      await navigator.clipboard.writeText(generatedKey)
+      toast.success('Скопировано')
+    } catch {
+      toast.error('Не удалось скопировать')
+    }
   }
 
   async function saveBackupChatId() {
@@ -442,6 +513,59 @@ export function Settings() {
       </section>
 
       <section style={{ ...sectionStyle, marginTop: 24 }}>
+        <h2 style={sectionTitleStyle}>Telegram бот расходов</h2>
+        <p style={hintStyle}>
+          API ключ позволяет Telegram-боту создавать расходы в CRM от имени
+          пользователя, привязанного по <code>telegram_username</code>.
+          Ключ показывается ровно один раз — при генерации.
+        </p>
+
+        {botKeyConfigured ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{
+                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                background: '#16a34a',
+              }} />
+              <span style={{ fontSize: 14, fontWeight: 500 }}>API ключ настроен</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleRegenerateBotKey}
+                disabled={isGeneratingBotKey}
+                style={{ minWidth: 160 }}
+              >
+                {isGeneratingBotKey ? 'Генерируем…' : 'Пересгенерировать'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteBotKey}
+                disabled={isDeletingBotKey}
+                style={{
+                  minWidth: 140,
+                  background: 'transparent',
+                  border: '1px solid #dc2626',
+                  color: '#dc2626',
+                }}
+              >
+                {isDeletingBotKey ? 'Удаление…' : 'Удалить ключ'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={generateBotKey}
+            disabled={isGeneratingBotKey}
+            style={{ minWidth: 200 }}
+          >
+            {isGeneratingBotKey ? 'Генерируем…' : 'Сгенерировать API ключ'}
+          </button>
+        )}
+      </section>
+
+      <section style={{ ...sectionStyle, marginTop: 24 }}>
         <h2 style={sectionTitleStyle}>Резервные копии</h2>
         <p style={hintStyle}>
           Ежедневно в 03:00 МСК backend снимает дамп PostgreSQL, gzip и
@@ -514,6 +638,41 @@ export function Settings() {
           <div style={{ fontSize: 13, color: '#8C7B6E' }}>Загрузка…</div>
         )}
       </section>
+
+      {showKeyModal && generatedKey && (
+        <Modal
+          title="🔑 API ключ сгенерирован"
+          onClose={() => { setShowKeyModal(false); setGeneratedKey(null) }}
+        >
+          <div style={alertWarningStyle}>
+            ⚠️ Сохраните ключ — он показывается только один раз.
+            После закрытия этого окна ключ нельзя будет восстановить.
+          </div>
+
+          <div style={keyDisplayStyle}>
+            <code style={keyCodeStyle}>{generatedKey}</code>
+            <button type="button" onClick={copyGeneratedKey} style={copyBtnStyle}>
+              Скопировать
+            </button>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <p style={{ margin: '0 0 6px', fontSize: 13, color: '#2C2B28' }}>
+              Добавьте ключ в файл <code>/root/crm-bot/.env</code>:
+            </p>
+            <pre style={keyEnvBlockStyle}>BOT_API_KEY={generatedKey}</pre>
+          </div>
+
+          <div className="modal-footer" style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              onClick={() => { setShowKeyModal(false); setGeneratedKey(null) }}
+            >
+              Закрыл, ключ сохранён
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
@@ -581,4 +740,51 @@ const savedBadgeStyle: CSSProperties = {
   borderRadius: 10,
   padding: '2px 8px',
   pointerEvents: 'none',
+}
+
+const alertWarningStyle: CSSProperties = {
+  background: '#fff3cd',
+  border: '1px solid #ffc107',
+  borderRadius: 6,
+  padding: '10px 14px',
+  color: '#856404',
+  fontSize: 14,
+  marginBottom: 12,
+}
+
+const keyDisplayStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  background: '#f5f5f5',
+  border: '1px solid #ddd',
+  borderRadius: 8,
+  padding: '12px 16px',
+  margin: '12px 0',
+}
+
+const keyCodeStyle: CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 13,
+  wordBreak: 'break-all',
+  flex: 1,
+}
+
+const copyBtnStyle: CSSProperties = {
+  flexShrink: 0,
+  fontSize: 13,
+  padding: '6px 12px',
+}
+
+const keyEnvBlockStyle: CSSProperties = {
+  margin: 0,
+  background: '#1e1e1e',
+  color: '#d4d4d4',
+  padding: 12,
+  borderRadius: 6,
+  fontSize: 13,
+  overflowX: 'auto',
+  fontFamily: 'monospace',
+  wordBreak: 'break-all',
+  whiteSpace: 'pre-wrap',
 }

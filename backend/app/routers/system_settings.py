@@ -1,3 +1,4 @@
+import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -274,6 +275,45 @@ def update_backup_chat_id(
     value = (data.chat_id or "").strip() or None
     set_backup_chat_id(db, value)
     return get_backup_config(db=db, _=None)  # type: ignore[arg-type]
+
+
+# ── Bot API key (Telegram expenses bot) ────────────────────────────────
+
+class BotApiKeyStatus(BaseModel):
+    configured: bool
+
+
+class BotApiKeyGenerated(BaseModel):
+    key: str
+
+
+@router.get("/bot-api-key", response_model=BotApiKeyStatus)
+def get_bot_api_key_status(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    return BotApiKeyStatus(configured=bool(get_setting(db, "bot_api_key")))
+
+
+@router.post("/bot-api-key", response_model=BotApiKeyGenerated)
+def generate_bot_api_key(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    key = str(uuid.uuid4())
+    set_setting(db, "bot_api_key", key)
+    db.commit()
+    return BotApiKeyGenerated(key=key)
+
+
+@router.delete("/bot-api-key", response_model=BotApiKeyStatus)
+def delete_bot_api_key(
+    db: Session = Depends(get_db),
+    _: User = Depends(root_only),
+):
+    set_setting(db, "bot_api_key", None)
+    db.commit()
+    return BotApiKeyStatus(configured=False)
 
 
 @router.post("/backup/run")

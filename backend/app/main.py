@@ -30,6 +30,7 @@ from .routers.stats import router as stats_router
 from .routers.cpf import router as cpf_router
 from .routers.sheets import router as sheets_router
 from .routers.competitors import router as competitors_router
+from .routers.bot import router as bot_router
 from .scheduler import start_scheduler, stop_scheduler
 
 
@@ -166,6 +167,7 @@ app.include_router(stats_router)
 app.include_router(cpf_router)
 app.include_router(sheets_router)
 app.include_router(competitors_router)
+app.include_router(bot_router)
 
 
 # Map DB constraint names to user-facing 400 messages. Defence-in-depth:
