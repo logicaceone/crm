@@ -18,4 +18,5 @@ class User(Base):
     username = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     role = Column(Enum(UserRole), nullable=False, server_default="viewer")
+    telegram_username = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

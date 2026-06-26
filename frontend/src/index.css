@@ -388,6 +388,14 @@ input[type="date"] {
   overflow: hidden;
 }
 
+.tg-link {
+  color: #229ED9;
+  text-decoration: none;
+}
+.tg-link:hover {
+  text-decoration: underline;
+}
+
 /* Modal scroll container — block any horizontal overflow on iOS.
  * Covers both our existing .modal-form-body and a spec-style .modal-body. */
 .modal-body,

@@ -15,6 +15,7 @@ interface UserItem {
   id: number
   username: string
   role: Role
+  telegram_username: string | null
   created_at: string
 }
 
@@ -66,12 +67,14 @@ export function Users() {
   const [newUsername, setNewUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newRole, setNewRole] = useState<Role>('viewer')
+  const [newTelegram, setNewTelegram] = useState('')
   const [modalError, setModalError] = useState('')
   const [modalSubmitting, setModalSubmitting] = useState(false)
 
   const [editUser, setEditUser] = useState<UserItem | null>(null)
   const [editPassword, setEditPassword] = useState('')
   const [editRole, setEditRole] = useState<Role>('viewer')
+  const [editTelegram, setEditTelegram] = useState('')
   const [editError, setEditError] = useState('')
   const [editSubmitting, setEditSubmitting] = useState(false)
 
@@ -106,7 +109,12 @@ export function Users() {
     try {
       const res = await apiFetch('/api/users', {
         method: 'POST',
-        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }),
+        body: JSON.stringify({
+          username: newUsername,
+          password: newPassword,
+          role: newRole,
+          telegram_username: newTelegram.trim() || null,
+        }),
       })
       if (!res.ok) {
         const msg = (await res.json()).detail ?? 'Ошибка'
@@ -117,7 +125,7 @@ export function Users() {
       const created: UserItem = await res.json()
       await loadUsers()
       setShowModal(false)
-      setNewUsername(''); setNewPassword(''); setNewRole('viewer')
+      setNewUsername(''); setNewPassword(''); setNewRole('viewer'); setNewTelegram('')
       toast.success(`Пользователь ${created.username} создан`)
     } finally { setModalSubmitting(false) }
   }
@@ -126,6 +134,7 @@ export function Users() {
     setEditUser(u)
     setEditRole(u.role === 'root' ? 'root' : u.role)
     setEditPassword('')
+    setEditTelegram(u.telegram_username ?? '')
     setEditError('')
   }
 
@@ -134,9 +143,11 @@ export function Users() {
     if (!editUser) return
     setEditError('')
     setEditSubmitting(true)
-    const body: Record<string, string> = {}
+    const body: Record<string, string | null> = {}
     if (editRole !== editUser.role) body.role = editRole
     if (editPassword) body.password = editPassword
+    const tgNext = editTelegram.trim().replace(/^@/, '') || null
+    if (tgNext !== (editUser.telegram_username ?? null)) body.telegram_username = tgNext
     if (!Object.keys(body).length) { setEditUser(null); setEditSubmitting(false); return }
     try {
       const res = await apiFetch(`/api/users/${editUser.id}`, {
@@ -184,6 +195,7 @@ export function Users() {
           <tr>
             <th style={thStyle}>Пользователь</th>
             <th style={thStyle}>Роль</th>
+            <th style={thStyle}>TG</th>
             <th style={thStyle}>Создан</th>
             <th style={thStyle}>Действия</th>
           </tr>
@@ -220,6 +232,16 @@ export function Users() {
                   }}>
                     {ROLE_LABEL[u.role]}
                   </span>
+                </td>
+                <td style={tdStyle}>
+                  {u.telegram_username
+                    ? <a
+                        href={`https://t.me/${u.telegram_username}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="tg-link"
+                      >@{u.telegram_username}</a>
+                    : <span style={{ color: '#8C7B6E' }}>—</span>}
                 </td>
                 <td style={tdStyle}>{new Date(u.created_at).toLocaleDateString('ru-RU')}</td>
                 <td style={{ ...tdStyle, width: 48, textAlign: 'center' }}>
@@ -273,6 +295,23 @@ export function Users() {
                 ))}
               </select>
             </label>
+            <div className="form-field">
+              <label style={labelStyle}>
+                Telegram username <span style={{ fontWeight: 400, color: '#8C7B6E' }}>(опционально)</span>
+                <div style={tgPrefixWrapStyle}>
+                  <span style={tgPrefixStyle}>@</span>
+                  <input
+                    type="text"
+                    name="telegram_username"
+                    placeholder="username"
+                    value={newTelegram}
+                    onChange={e => setNewTelegram(e.target.value.replace(/^@/, ''))}
+                    style={tgInputStyle}
+                  />
+                </div>
+              </label>
+              <span style={hintStyle}>Нужен для доступа к Telegram боту расходов</span>
+            </div>
             <div className="modal-footer">
               <button type="button" onClick={() => setShowModal(false)}>Отмена</button>
               <button type="submit" disabled={modalSubmitting}>{modalSubmitting ? 'Создание…' : 'Создать'}</button>
@@ -305,6 +344,32 @@ export function Users() {
               Новый пароль <span style={{ fontWeight: 400, color: '#8C7B6E' }}>(оставьте пустым если не менять)</span>
               <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoFocus />
             </label>
+            <div className="form-field">
+              <label style={labelStyle}>
+                Telegram username <span style={{ fontWeight: 400, color: '#8C7B6E' }}>(опционально)</span>
+                <div style={tgPrefixWrapStyle}>
+                  <span style={tgPrefixStyle}>@</span>
+                  <input
+                    type="text"
+                    name="telegram_username"
+                    placeholder="username"
+                    value={editTelegram}
+                    onChange={e => setEditTelegram(e.target.value.replace(/^@/, ''))}
+                    style={tgInputStyle}
+                  />
+                </div>
+              </label>
+              <div style={hintRowStyle}>
+                <span style={hintStyle}>Нужен для доступа к Telegram боту расходов</span>
+                {editTelegram && (
+                  <button
+                    type="button"
+                    onClick={() => setEditTelegram('')}
+                    style={clearBtnStyle}
+                  >Очистить</button>
+                )}
+              </div>
+            </div>
             <div className="modal-footer">
               <button type="button" onClick={() => setEditUser(null)}>Отмена</button>
               <button type="submit" disabled={editSubmitting}>{editSubmitting ? 'Сохранение…' : 'Сохранить'}</button>
@@ -353,5 +418,59 @@ const labelStyle: CSSProperties = {
 const errStyle: CSSProperties = {
   color: '#dc2626',
   fontSize: 14,
+}
+
+const tgPrefixWrapStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  border: '1px solid #E8DDD3',
+  borderRadius: 6,
+  overflow: 'hidden',
+  background: '#FEFEFE',
+}
+
+const tgPrefixStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  padding: '0 10px',
+  background: '#F0E8DE',
+  color: '#8C7B6E',
+  fontSize: 14,
+  borderRight: '1px solid #E8DDD3',
+}
+
+const tgInputStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: 'none',
+  outline: 'none',
+  padding: '6px 8px',
+  fontSize: 14,
+  background: 'transparent',
+}
+
+const hintStyle: CSSProperties = {
+  display: 'block',
+  marginTop: 4,
+  fontSize: 12,
+  color: '#8C7B6E',
+}
+
+const hintRowStyle: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 8,
+}
+
+const clearBtnStyle: CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  marginTop: 4,
+  color: '#8C7B6E',
+  fontSize: 12,
+  cursor: 'pointer',
+  textDecoration: 'underline',
 }
 

@@ -52,6 +52,7 @@ def create_user(
         username=data.username,
         password_hash=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
         role=data.role,
+        telegram_username=data.telegram_username,
     )
     db.add(user)
     db.commit()
@@ -93,6 +94,8 @@ def update_user(
         user.role = data.role
     if data.password is not None:
         user.password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+    if "telegram_username" in data.model_fields_set:
+        user.telegram_username = data.telegram_username
     db.commit()
     db.refresh(user)
     log_action(db, me, "update", "user", user.id, f"Пользователь {user.username} обновлён")
