@@ -1,52 +1,68 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+PAGE_SIZE = 8
+
 PLATFORM_EMOJI = {
-    "telegram": "TG",
-    "max": "MAX",
+    "telegram": "🔵 TG",
+    "max": "🔴 MAX",
 }
 
-# Hard cap on callback_data length set by Telegram. Keep margin for the
-# `ch:<id>:` prefix.
+# Telegram caps callback_data at 64 bytes. Trim the name by *bytes*
+# (UTF-8) so Cyrillic doesn't blow the budget.
 _CALLBACK_MAX = 64
 
 
 def _name_for_callback(name: str, prefix_len: int) -> str:
-    """Trim by bytes (UTF-8) so Cyrillic names don't blow the 64-byte
-    callback_data ceiling. Falls back to char-truncation only if the
-    string is ASCII."""
     budget = _CALLBACK_MAX - prefix_len
     encoded = name.encode("utf-8")[:budget]
-    # Drop a possibly-cut multibyte char at the tail.
     return encoded.decode("utf-8", errors="ignore")
 
 
-def channels_keyboard(channels: list[dict]) -> InlineKeyboardMarkup:
-    """Build a 2-per-row picker for up to 20 channels + Skip/Cancel.
+def channels_keyboard(channels: list[dict], page: int = 0) -> InlineKeyboardMarkup:
+    """Paginated channel picker — one channel per row, 8 per page.
 
-    Callback shape: ``ch:<id>:<name>`` — handler uses the name to render
-    the confirmation summary without a second round-trip to the CRM.
+    Callback shapes used here::
+      ch:<id>:<name>        — pick a channel
+      ch_page:<page>        — switch page
+      ch_page_info          — noop (the "n / m" counter button)
+      ch:skip               — proceed without a channel
+      cancel                — abort the whole flow
     """
-    buttons: list[list[InlineKeyboardButton]] = []
-    row: list[InlineKeyboardButton] = []
+    total = len(channels)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * PAGE_SIZE
+    page_channels = channels[start:start + PAGE_SIZE]
 
-    for ch in channels[:20]:
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for ch in page_channels:
         platform = PLATFORM_EMOJI.get(ch.get("platform", ""), "")
-        label = f"[{platform}] {ch['name']}" if platform else ch["name"]
+        label = f"{platform} {ch['name']}" if platform else ch["name"]
         prefix = f"ch:{ch['id']}:"
         name_safe = _name_for_callback(ch["name"], len(prefix.encode("utf-8")))
-
-        row.append(
+        buttons.append([
             InlineKeyboardButton(
-                text=label[:40],
+                text=label[:60],
                 callback_data=f"{prefix}{name_safe}",
             )
-        )
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
+        ])
 
-    if row:
-        buttons.append(row)
+    # Navigation row — only shown when there's more than one page.
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton(
+                text="◀️ Назад", callback_data=f"ch_page:{page - 1}",
+            ))
+        nav_row.append(InlineKeyboardButton(
+            text=f"{page + 1} / {total_pages}", callback_data="ch_page_info",
+        ))
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton(
+                text="Вперёд ▶️", callback_data=f"ch_page:{page + 1}",
+            ))
+        buttons.append(nav_row)
 
     buttons.append([InlineKeyboardButton(text="⏭ Пропустить", callback_data="ch:skip")])
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])

@@ -81,15 +81,19 @@ async def on_category(callback: CallbackQuery, state: FSMContext) -> None:
         if not channels:
             await callback.message.answer(
                 "⚠️ Не удалось загрузить список каналов.\n"
-                "Канал будет пропущен, продолжаем без него."
+                "Продолжаем без выбора канала."
             )
             await ask_date(callback.message, state)
             return
 
+        # Cache once so pagination doesn't re-hit the CRM on every page.
+        await state.update_data(channels_list=channels)
+
         await callback.message.answer(
-            "📺 Шаг 2 из 5\n\nВыберите наш канал (для CPA)\n"
-            "или нажмите «Пропустить»:",
-            reply_markup=channels_keyboard(channels),
+            "📺 Шаг 2 из 5\n\n"
+            "Выберите наш канал (для CPA)\n"
+            f"Всего каналов: {len(channels)}",
+            reply_markup=channels_keyboard(channels, page=0),
         )
         await state.set_state(ExpenseStates.waiting_channel)
     else:
@@ -97,6 +101,36 @@ async def on_category(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ── Step 3: channel (CPA only) ───────────────────────────
+
+@router.callback_query(ExpenseStates.waiting_channel, F.data.startswith("ch_page:"))
+async def on_channel_page(callback: CallbackQuery, state: FSMContext) -> None:
+    try:
+        page = int(callback.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        await callback.answer()
+        return
+
+    data = await state.get_data()
+    channels = data.get("channels_list")
+    if not channels:
+        # Cache was lost (bot restart, state expiry) — refetch lazily.
+        channels = await get_channels()
+        if not channels:
+            await callback.answer("Не удалось загрузить каналы", show_alert=True)
+            return
+        await state.update_data(channels_list=channels)
+
+    await callback.message.edit_reply_markup(
+        reply_markup=channels_keyboard(channels, page=page),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ExpenseStates.waiting_channel, F.data == "ch_page_info")
+async def on_channel_page_info(callback: CallbackQuery) -> None:
+    # The "n / m" counter is decorative — just dismiss the spinner.
+    await callback.answer()
+
 
 @router.callback_query(ExpenseStates.waiting_channel, F.data == "ch:skip")
 async def on_channel_skip(callback: CallbackQuery, state: FSMContext) -> None:
