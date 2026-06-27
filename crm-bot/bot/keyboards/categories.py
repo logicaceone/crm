@@ -1,22 +1,26 @@
-from aiogram.types import InlineKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-CATEGORY_LABELS = [
-    ("tg_ads", "📱 TG Ads"),
-    ("vk_ads", "🎯 VK Ads"),
-    ("yandex", "🔍 Яндекс"),
-    ("blogger", "👤 Блогеры"),
-    ("subscribers", "👥 Подписчики"),
-    ("lunch", "🍽 Обеды"),
-    ("giveaway", "🎁 Подарки"),
-    ("services", "⚙️ Сервисы"),
-    ("other", "📝 Прочие"),
-]
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def categories_keyboard() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    for key, label in CATEGORY_LABELS:
-        kb.button(text=label, callback_data=f"cat:{key}")
-    kb.adjust(2)
-    return kb.as_markup()
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📱 TG Ads", callback_data="cat:tg_ads"),
+                InlineKeyboardButton(text="🎯 VK Ads", callback_data="cat:vk_ads"),
+            ],
+            [
+                InlineKeyboardButton(text="🔍 Яндекс", callback_data="cat:yandex"),
+                InlineKeyboardButton(text="👤 Блогеры", callback_data="cat:blogger"),
+            ],
+            [
+                InlineKeyboardButton(text="👥 Подписчики", callback_data="cat:subscribers"),
+                InlineKeyboardButton(text="🍽 Обеды", callback_data="cat:lunch"),
+            ],
+            [
+                InlineKeyboardButton(text="🎁 Подарки", callback_data="cat:giveaway"),
+                InlineKeyboardButton(text="⚙️ Сервисы", callback_data="cat:services"),
+            ],
+            [InlineKeyboardButton(text="📝 Прочие", callback_data="cat:other")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
+        ]
+    )

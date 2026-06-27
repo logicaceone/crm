@@ -31,6 +31,19 @@ CATEGORY_NAMES = {
 }
 
 
+# ── Global cancel button ─────────────────────────────────
+
+@router.callback_query(F.data == "cancel")
+async def on_cancel_button(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await state.clear()
+    await callback.message.answer(
+        "❌ Действие отменено.\n"
+        "Введите /add чтобы начать заново."
+    )
+
+
 # ── Step 1: /add ─────────────────────────────────────────
 
 @router.message(Command("add"))
@@ -73,7 +86,6 @@ async def on_category(callback: CallbackQuery, state: FSMContext) -> None:
             await ask_date(callback.message, state)
             return
 
-        await state.update_data(channels=channels)
         await callback.message.answer(
             "📺 Шаг 2 из 5\n\nВыберите наш канал (для CPA)\n"
             "или нажмите «Пропустить»:",
@@ -97,18 +109,13 @@ async def on_channel_skip(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(ExpenseStates.waiting_channel, F.data.startswith("ch:"))
 async def on_channel(callback: CallbackQuery, state: FSMContext) -> None:
+    parts = callback.data.split(":", 2)
     try:
-        channel_id = int(callback.data.split(":", 1)[1])
-    except ValueError:
+        channel_id = int(parts[1])
+    except (IndexError, ValueError):
         await callback.answer("Некорректный канал", show_alert=True)
         return
-
-    data = await state.get_data()
-    channels = data.get("channels", [])
-    channel_name = next(
-        (c["name"] for c in channels if c["id"] == channel_id),
-        "—",
-    )
+    channel_name = parts[2] if len(parts) > 2 else "—"
 
     await state.update_data(channel_id=channel_id, channel_name=channel_name)
     await callback.message.edit_reply_markup(reply_markup=None)
