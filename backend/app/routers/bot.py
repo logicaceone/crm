@@ -76,8 +76,8 @@ def create_expense_from_bot(
     if payload.status not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status: {payload.status}")
 
-    if payload.category == ExpenseCategory.other.value and not (payload.comment and payload.comment.strip()):
-        raise HTTPException(status_code=400, detail="Comment required for category 'other'")
+    if payload.category in (ExpenseCategory.other.value, ExpenseCategory.salary.value) and not (payload.comment and payload.comment.strip()):
+        raise HTTPException(status_code=400, detail=f"Comment required for category '{payload.category}'")
 
     expense = Expense(
         category=ExpenseCategory(payload.category),

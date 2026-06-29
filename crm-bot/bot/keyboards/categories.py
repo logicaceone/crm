@@ -20,7 +20,10 @@ def categories_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🎁 Подарки", callback_data="cat:giveaway"),
                 InlineKeyboardButton(text="⚙️ Сервисы", callback_data="cat:services"),
             ],
-            [InlineKeyboardButton(text="📝 Прочие", callback_data="cat:other")],
+            [
+                InlineKeyboardButton(text="💼 Зарплата", callback_data="cat:salary"),
+                InlineKeyboardButton(text="📝 Прочие", callback_data="cat:other"),
+            ],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
         ]
     )

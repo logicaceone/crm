@@ -14,6 +14,7 @@ class ExpenseCategory(str, enum.Enum):
     lunch = "lunch"
     giveaway = "giveaway"
     services = "services"
+    salary = "salary"
     other = "other"
 
 

@@ -27,7 +27,15 @@ CATEGORY_NAMES = {
     "lunch": "🍽 Обеды",
     "giveaway": "🎁 Подарки",
     "services": "⚙️ Сервисы",
+    "salary": "💼 Зарплата",
     "other": "📝 Прочие",
+}
+
+COMMENT_REQUIRED = {"other", "salary"}
+
+COMMENT_REQUIRED_LABEL = {
+    "other": "«Прочие»",
+    "salary": "«Зарплата»",
 }
 
 
@@ -240,11 +248,12 @@ async def on_responsible(message: Message, state: FSMContext) -> None:
 
     await state.update_data(responsible=responsible)
 
-    if data["category"] == "other":
+    if data["category"] in COMMENT_REQUIRED:
+        label = COMMENT_REQUIRED_LABEL[data["category"]]
         prompt = (
             "💬 Шаг 5 из 5\n\n"
             "Введите комментарий:\n"
-            "⚠️ Для категории «Прочие» комментарий обязателен"
+            f"⚠️ Для категории {label} комментарий обязателен"
         )
     else:
         prompt = (
@@ -264,18 +273,20 @@ async def on_comment(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
 
     if text == "-":
-        if data["category"] == "other":
+        if data["category"] in COMMENT_REQUIRED:
+            label = COMMENT_REQUIRED_LABEL[data["category"]]
             await message.answer(
-                "❌ Для категории «Прочие» комментарий обязателен.\n"
+                f"❌ Для категории {label} комментарий обязателен.\n"
                 "Введите комментарий:"
             )
             return
         comment = None
     else:
         comment = text or None
-        if data["category"] == "other" and not comment:
+        if data["category"] in COMMENT_REQUIRED and not comment:
+            label = COMMENT_REQUIRED_LABEL[data["category"]]
             await message.answer(
-                "❌ Для категории «Прочие» комментарий обязателен.\n"
+                f"❌ Для категории {label} комментарий обязателен.\n"
                 "Введите комментарий:"
             )
             return

@@ -15,14 +15,15 @@ const PER_PAGE = 15
 
 type ExpenseCategory =
   | 'tg_ads' | 'vk_ads' | 'yandex' | 'blogger'
-  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'other'
+  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'salary' | 'other'
 
 type ExpenseStatus = 'planned' | 'placed' | 'cancelled'
 
 const CPA_CATEGORIES = new Set<ExpenseCategory>(['tg_ads', 'vk_ads', 'yandex', 'blogger'])
 const RESPONSIBLE_REQUIRED = new Set<ExpenseCategory>([
-  'subscribers', 'lunch', 'giveaway', 'services', 'other',
+  'subscribers', 'lunch', 'giveaway', 'services', 'salary', 'other',
 ])
+const COMMENT_REQUIRED = new Set<ExpenseCategory>(['salary', 'other'])
 
 interface ExternalChannel {
   id: number
@@ -99,6 +100,7 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   lunch: 'Обеды',
   giveaway: 'Подарки',
   services: 'Сервисы',
+  salary: 'Зарплата',
   other: 'Прочие',
 }
 
@@ -111,6 +113,7 @@ const CATEGORY_BADGE_LABEL: Record<ExpenseCategory, string> = {
   lunch: 'Обеды',
   giveaway: 'Подарки',
   services: 'Сервисы',
+  salary: 'Зарплата',
   other: 'Прочие',
 }
 
@@ -123,6 +126,7 @@ const CATEGORY_BADGE: Record<ExpenseCategory, { bg: string; fg: string }> = {
   lunch:       { bg: '#FFEDD5', fg: '#C2410C' }, // оранжевый
   giveaway:    { bg: '#FCE7F3', fg: '#BE185D' }, // розовый
   services:    { bg: '#E5E7EB', fg: '#374151' }, // серый
+  salary:      { bg: '#E0F2FE', fg: '#0369A1' }, // голубой
   other:       { bg: '#E5E7EB', fg: '#374151' }, // серый
 }
 
@@ -130,7 +134,7 @@ const CATEGORY_ORDER: ExpenseCategory[] = [
   'tg_ads', 'vk_ads', 'yandex',
   'blogger', 'subscribers',
   'lunch', 'giveaway', 'services',
-  'other',
+  'salary', 'other',
 ]
 
 const STATUS_LABELS: Record<ExpenseStatus, string> = {
@@ -809,7 +813,7 @@ function ExpenseFormModal({
   const isCPA = CPA_CATEGORIES.has(form.category)
   const isBlogger = form.category === 'blogger'
   const respRequired = RESPONSIBLE_REQUIRED.has(form.category)
-  const commentRequired = form.category === 'other'
+  const commentRequired = COMMENT_REQUIRED.has(form.category)
   const selectedCh = intChannels.find(c => c.id === Number(form.channel_id))
   const isMax = selectedCh?.platform === 'max'
   const isTg = selectedCh?.platform === 'telegram'

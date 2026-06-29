@@ -46,6 +46,7 @@ CATEGORY_LABEL = {
     ExpenseCategory.lunch: "Обеды",
     ExpenseCategory.giveaway: "Подарки",
     ExpenseCategory.services: "Сервисы",
+    ExpenseCategory.salary: "Зарплата",
     ExpenseCategory.other: "Прочие",
 }
 # Categories that require a non-empty responsible field at create/update time.
@@ -56,6 +57,7 @@ RESPONSIBLE_REQUIRED = frozenset({
     ExpenseCategory.lunch,
     ExpenseCategory.giveaway,
     ExpenseCategory.services,
+    ExpenseCategory.salary,
     ExpenseCategory.other,
 })
 
@@ -148,11 +150,12 @@ def _validate(category: ExpenseCategory, effective: dict) -> None:
                 status_code=400,
                 detail="Поле «Ответственный» обязательно для этой категории",
             )
-    if category == ExpenseCategory.other:
+    if category in (ExpenseCategory.other, ExpenseCategory.salary):
         if not (effective.get("comment") or "").strip():
+            label = "«Зарплата»" if category == ExpenseCategory.salary else "«Прочие»"
             raise HTTPException(
                 status_code=400,
-                detail="Поле «Комментарий» обязательно для категории «Прочие»",
+                detail=f"Поле «Комментарий» обязательно для категории {label}",
             )
 
 
