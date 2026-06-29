@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models.expense import Expense, ExpenseCategory, ExpenseStatus
 from ..models.sheet_source import SheetSource, SheetsImportLog
+from ..services.city_normalizer import normalize_cities
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +129,12 @@ async def sync_source(source: SheetSource, db: Session) -> dict:
             errors += 1
             continue
 
-        parts = [p for p in [row["city"], row["about"]] if p]
-        comment = " — ".join(parts) or None
+        cities, leftover = normalize_cities(row["city"])
+        about = row["about"] or ""
+        if leftover and row["city"]:
+            comment = f"[city: {row['city']}] {about}".rstrip() or None
+        else:
+            comment = about or None
 
         try:
             expense = Expense(
@@ -139,6 +144,7 @@ async def sync_source(source: SheetSource, db: Session) -> dict:
                 currency="RUB",
                 status=ExpenseStatus.placed,
                 comment=comment,
+                city=cities or None,
                 responsible=row["responsible"] or None,
                 channel_id=None,
                 created_by=None,

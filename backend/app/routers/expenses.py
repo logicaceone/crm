@@ -116,7 +116,7 @@ def delete_external_channel(
 
 # ── Expenses ─────────────────────────────────────────────────────────────────
 
-def _apply_filters(q, external_channel_id, status, from_, to, category, responsible):
+def _apply_filters(q, external_channel_id, status, from_, to, category, responsible, city=None):
     if external_channel_id:
         q = q.filter(Expense.external_channel_id == external_channel_id)
     if status:
@@ -129,6 +129,8 @@ def _apply_filters(q, external_channel_id, status, from_, to, category, responsi
         q = q.filter(Expense.category == category)
     if responsible:
         q = q.filter(Expense.responsible.ilike(f"%{responsible}%"))
+    if city:
+        q = q.filter(Expense.city.any(city))
     return q
 
 
@@ -167,6 +169,7 @@ def expenses_summary(
     to: Optional[date] = None,
     category: Optional[ExpenseCategory] = None,
     responsible: Optional[str] = None,
+    city: Optional[str] = None,
     db: Session = Depends(get_db),
     _: User = Depends(read_access),
 ):
@@ -176,7 +179,7 @@ def expenses_summary(
             func.count(Expense.id),
             func.coalesce(func.sum(Expense.price), 0),
         ),
-        external_channel_id, status, from_, to, category, responsible,
+        external_channel_id, status, from_, to, category, responsible, city,
     ).group_by(Expense.category).all()
 
     by_category: dict[str, float] = {c.value: 0.0 for c in ExpenseCategory}
@@ -191,7 +194,7 @@ def expenses_summary(
 
     currencies = [c for (c,) in _apply_filters(
         db.query(Expense.currency).distinct(),
-        external_channel_id, status, from_, to, category, responsible,
+        external_channel_id, status, from_, to, category, responsible, city,
     ).all()]
     if not currencies:
         currency = "RUB"
@@ -200,7 +203,26 @@ def expenses_summary(
     else:
         currency = "mixed"
 
-    return ExpenseSummary(total=total, by_category=by_category, currency=currency, count=count)
+    city_subq = _apply_filters(
+        db.query(
+            func.unnest(Expense.city).label("c"),
+            Expense.price.label("p"),
+        ).filter(Expense.category == ExpenseCategory.subscribers),
+        external_channel_id, status, from_, to, None, responsible, city,
+    ).subquery()
+    city_rows = db.query(
+        city_subq.c.c,
+        func.coalesce(func.sum(city_subq.c.p), 0),
+    ).group_by(city_subq.c.c).all()
+    by_city: dict[str, float] = {c: float(s or 0) for c, s in city_rows if c}
+
+    return ExpenseSummary(
+        total=total,
+        by_category=by_category,
+        by_city=by_city,
+        currency=currency,
+        count=count,
+    )
 
 
 @router.get("")
@@ -211,6 +233,7 @@ def list_expenses(
     to: Optional[date] = None,
     category: Optional[ExpenseCategory] = None,
     responsible: Optional[str] = None,
+    city: Optional[str] = None,
     page: Optional[int] = None,
     per_page: int = Query(default=15, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -218,7 +241,7 @@ def list_expenses(
 ):
     q = _apply_filters(
         db.query(Expense),
-        external_channel_id, status, from_, to, category, responsible,
+        external_channel_id, status, from_, to, category, responsible, city,
     ).order_by(Expense.date.desc())
     if page is None:
         return q.all()

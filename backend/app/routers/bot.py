@@ -58,6 +58,7 @@ class BotExpenseCreate(BaseModel):
     status: str = "placed"
     responsible: Optional[str] = None
     comment: Optional[str] = None
+    city: Optional[list[str]] = None
     channel_id: Optional[int] = None
     created_by: Optional[int] = None
 
@@ -87,6 +88,7 @@ def create_expense_from_bot(
         status=ExpenseStatus(payload.status),
         responsible=payload.responsible,
         comment=payload.comment,
+        city=payload.city,
         channel_id=payload.channel_id,
         created_by=payload.created_by,
     )

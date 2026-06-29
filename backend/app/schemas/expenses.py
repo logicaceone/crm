@@ -45,6 +45,7 @@ class ExpenseResponse(BaseModel):
     currency: str
     status: ExpenseStatus
     comment: Optional[str]
+    city: Optional[list[str]] = None
     responsible: Optional[str] = None
     invite_link: Optional[str] = None
     joined_count: int = 0
@@ -66,6 +67,7 @@ class CreateExpenseRequest(BaseModel):
     currency: str = "RUB"
     status: ExpenseStatus = ExpenseStatus.planned
     comment: Optional[str] = None
+    city: Optional[list[str]] = None
     responsible: Optional[str] = None
     invite_link: Optional[str] = None
 
@@ -79,6 +81,7 @@ class UpdateExpenseRequest(BaseModel):
     currency: Optional[str] = None
     status: Optional[ExpenseStatus] = None
     comment: Optional[str] = None
+    city: Optional[list[str]] = None
     responsible: Optional[str] = None
     invite_link: Optional[str] = None
     joined_count: Optional[int] = None
@@ -100,3 +103,4 @@ class ExpenseSummary(BaseModel):
     currency: str
     count: int
     by_category: dict[str, float] = {}
+    by_city: dict[str, float] = {}
