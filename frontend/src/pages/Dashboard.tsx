@@ -41,6 +41,7 @@ interface RecentExpense {
   currency: string
   status: string
   responsible: string | null
+  city: string[] | null
 }
 
 interface RecentSale {

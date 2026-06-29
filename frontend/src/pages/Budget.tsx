@@ -18,6 +18,7 @@ interface Summary {
   margin_pct: number
   currency: string
   by_category?: Record<string, number>
+  by_city?: Record<string, number>
 }
 
 interface MonthRow {
@@ -26,6 +27,7 @@ interface MonthRow {
   income: number
   margin: number
   by_category?: Record<string, number>
+  by_city?: Record<string, number>
 }
 
 const CATEGORY_ORDER: ExpenseCategory[] = [
@@ -241,6 +243,43 @@ export function Budget() {
                 ))}
               </BarChart>
             </ResponsiveContainer>
+          </div>
+
+          {/* Bar chart: expenses by city (subscribers only) */}
+          <div style={chartCardStyle}>
+            <h3 style={chartTitleStyle}>По городам</h3>
+            {(() => {
+              const byCity = summary?.by_city ?? {}
+              const cityData = Object.entries(byCity)
+                .map(([city, total]) => ({ city, total }))
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 15)
+              if (cityData.length === 0) {
+                return (
+                  <div style={{ color: '#8C7B6E', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
+                    Нет данных по городам в выбранном периоде
+                  </div>
+                )
+              }
+              return (
+                <ResponsiveContainer width="100%" height={Math.max(180, cityData.length * 28 + 40)}>
+                  <BarChart
+                    data={cityData}
+                    layout="vertical"
+                    margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => fmt(v)} />
+                    <YAxis type="category" dataKey="city" tick={{ fontSize: 11 }} width={110} />
+                    <Tooltip formatter={(v) => (typeof v === 'number' ? fmt(v) : v)} />
+                    <Bar dataKey="total" name="Расходы" fill="#15803D" radius={[0, 3, 3, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )
+            })()}
+            <div style={{ fontSize: 12, opacity: 0.6, fontStyle: 'italic', marginTop: 8 }}>
+              Одна выплата может покрывать несколько городов и попадёт в сумму каждого. Сумма по городам может превышать общий бюджет — это норма.
+            </div>
           </div>
 
           {/* Line chart: margin */}

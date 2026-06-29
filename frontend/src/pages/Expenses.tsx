@@ -50,6 +50,7 @@ interface Expense {
   status: ExpenseStatus
   comment: string | null
   responsible: string | null
+  city: string[] | null
   invite_link: string | null
   joined_count: number
   left_count: number
@@ -58,6 +59,13 @@ interface Expense {
   creator: { id: number; username: string }
   created_at: string
 }
+
+const CANONICAL_CITIES = [
+  'Азнакаево', 'Аксубаево', 'Альметьевск', 'Арск', 'Балтаси', 'Бавлы',
+  'Бугульма', 'Буинск', 'Елабуга', 'Заинск', 'Зеленодольск', 'Казань',
+  'Кукмор', 'Лениногорск', 'Мамадыш', 'Менделеевск', 'Мензелинск',
+  'Нижнекамск', 'Нурлат', 'Тетюши', 'Уруссу', 'Челны', 'Чистополь',
+]
 
 interface Summary {
   total: number
@@ -73,6 +81,7 @@ interface Filters {
   to: string
   category: string
   responsible: string
+  city: string
 }
 
 type FormState = {
@@ -84,6 +93,7 @@ type FormState = {
   status: ExpenseStatus
   comment: string
   responsible: string
+  city: string
   invite_link: string
   joined_count: string
   left_count: string
@@ -175,6 +185,7 @@ function buildQS(f: Filters): string {
   if (f.to) p.set('to', f.to)
   if (f.category) p.set('category', f.category)
   if (f.responsible) p.set('responsible', f.responsible)
+  if (f.city) p.set('city', f.city)
   const s = p.toString()
   return s ? `?${s}` : ''
 }
@@ -189,6 +200,7 @@ function makeEmptyForm(category: ExpenseCategory = 'tg_ads'): FormState {
     status: 'planned',
     comment: '',
     responsible: '',
+    city: '',
     invite_link: '',
     joined_count: '',
     left_count: '',
@@ -209,7 +221,7 @@ export function Expenses() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [filters, setFilters] = useState<Filters>({
     external_channel_id: '', status: '', from: '', to: '',
-    category: '', responsible: '',
+    category: '', responsible: '', city: '',
   })
   const [rangeError, setRangeError] = useState<string | null>(null)
   const [pageError, setPageError] = useState('')
@@ -331,6 +343,10 @@ export function Expenses() {
     // expense has already happened by the time it's logged, so we
     // force "placed".
     const status = isCPA ? form.status : 'placed'
+    const cityList = form.city
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
     return {
       category: form.category,
       date: form.date,
@@ -339,6 +355,7 @@ export function Expenses() {
       status,
       comment: form.comment || null,
       responsible: form.responsible || null,
+      city: cityList.length > 0 ? cityList : null,
       external_channel_id: isBlogger && form.external_channel_id
         ? Number(form.external_channel_id) : null,
       channel_id: isCPA && form.channel_id ? Number(form.channel_id) : null,
@@ -382,6 +399,7 @@ export function Expenses() {
       status: e.status,
       comment: e.comment ?? '',
       responsible: e.responsible ?? '',
+      city: (e.city ?? []).join(', '),
       invite_link: e.invite_link ?? '',
       joined_count: String(e.joined_count),
       left_count: String(e.left_count),
@@ -479,13 +497,13 @@ export function Expenses() {
   }
 
   const resetFilters = () => {
-    setFilters({ external_channel_id: '', status: '', from: '', to: '', category: '', responsible: '' })
+    setFilters({ external_channel_id: '', status: '', from: '', to: '', category: '', responsible: '', city: '' })
     setRangeError(null)
   }
 
   const hasFilters = !!(
     filters.external_channel_id || filters.status || filters.from ||
-    filters.to || filters.category || filters.responsible
+    filters.to || filters.category || filters.responsible || filters.city
   )
 
   if (pageError) return <p style={{ color: 'red' }}>{pageError}</p>
@@ -497,7 +515,7 @@ export function Expenses() {
     </div>
   )
 
-  const colCount = canWrite ? 8 : 7
+  const colCount = canWrite ? 9 : 8
 
   const summaryTooltip = summary
     ? CATEGORY_ORDER
@@ -547,6 +565,17 @@ export function Expenses() {
           style={{ width: 160 }}
         />
 
+        <select
+          value={filters.city}
+          onChange={e => setFilters(p => ({ ...p, city: e.target.value }))}
+          style={{ width: 160 }}
+        >
+          <option value="">Все города</option>
+          {CANONICAL_CITIES.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+
         <DateRangePicker
           dateFrom={filters.from}
           dateTo={filters.to}
@@ -567,6 +596,7 @@ export function Expenses() {
             <tr>
               <th style={thStyle}>Дата</th>
               <th style={thStyle}>Категория</th>
+              <th style={thStyle}>Город</th>
               <th style={thStyle}>Площадка</th>
               <th style={thStyle}>Канал</th>
               <th style={thStyle}>Сумма</th>
@@ -592,6 +622,15 @@ export function Expenses() {
                       <span style={{ ...categoryBadgeStyle, background: badge.bg, color: badge.fg }}>
                         {CATEGORY_BADGE_LABEL[e.category]}
                       </span>
+                    </td>
+                    <td style={tdStyle}>
+                      {e.city && e.city.length > 0 ? (
+                        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+                          {e.city.map(c => (
+                            <span key={c} style={cityChipStyle}>{c}</span>
+                          ))}
+                        </span>
+                      ) : '—'}
                     </td>
                     <td style={tdStyle}>
                       {e.category === 'blogger' ? (e.external_channel?.name ?? '—') : '—'}
@@ -937,6 +976,27 @@ function ExpenseFormModal({
         </label>
 
         <label style={labelStyle}>
+          Город (через запятую)
+          <input
+            type="text"
+            list="canonical-cities"
+            value={form.city}
+            onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
+            placeholder={form.category === 'subscribers' ? 'Например: Альметьевск, Казань' : ''}
+          />
+          {form.category === 'subscribers' && (
+            <span style={{ fontSize: 11, color: '#8C7B6E' }}>
+              Например: Альметьевск или Альмет-Казань
+            </span>
+          )}
+          <datalist id="canonical-cities">
+            {CANONICAL_CITIES.map(c => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
+
+        <label style={labelStyle}>
           Комментарий{commentRequired ? ' *' : ''}
           <textarea
             rows={2}
@@ -1037,6 +1097,17 @@ const categoryBadgeStyle: CSSProperties = {
   fontWeight: 600,
   padding: '2px 10px',
   borderRadius: 20,
+  whiteSpace: 'nowrap',
+}
+
+const cityChipStyle: CSSProperties = {
+  display: 'inline-block',
+  fontSize: 11,
+  fontWeight: 500,
+  padding: '2px 8px',
+  borderRadius: 20,
+  background: '#E5E7EB',
+  color: '#374151',
   whiteSpace: 'nowrap',
 }
 
