@@ -10,6 +10,7 @@ from bot.keyboards.categories import categories_keyboard
 from bot.keyboards.channels import channels_keyboard
 from bot.keyboards.confirm import confirm_keyboard
 from bot.services.auth import get_crm_user
+from bot.services.city_normalizer import normalize_cities
 from bot.services.crm_api import create_expense, get_channels
 from bot.states.expense import ExpenseStates
 
@@ -104,6 +105,8 @@ async def on_category(callback: CallbackQuery, state: FSMContext) -> None:
             reply_markup=channels_keyboard(channels, page=0),
         )
         await state.set_state(ExpenseStates.waiting_channel)
+    elif category == "subscribers":
+        await ask_city(callback.message, state)
     else:
         await ask_date(callback.message, state)
 
@@ -164,6 +167,42 @@ async def on_channel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer(f"Канал: {channel_name}")
     await callback.answer()
     await ask_date(callback.message, state)
+
+
+# ── Step 3b: city (subscribers only) ─────────────────────
+
+async def ask_city(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        "🏙 Введите город (или несколько через запятую/дефис):\n"
+        "Например: Альметьевск или Альмет-Казань"
+    )
+    await state.set_state(ExpenseStates.waiting_city)
+
+
+@router.message(ExpenseStates.waiting_city)
+async def on_city(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+
+    if text == "-":
+        await state.update_data(city=None, city_leftover=None)
+        await message.answer("Город: пропущен")
+        await ask_date(message, state)
+        return
+
+    cities, leftover = normalize_cities(text)
+    if not cities:
+        await message.answer(
+            "❌ Не распознал ни одного города. Попробуй ещё раз или отправь «-» чтобы пропустить."
+        )
+        return
+
+    await state.update_data(city=cities)
+    reply = f"Город: {', '.join(cities)}"
+    if leftover:
+        await state.update_data(city_leftover=leftover)
+        reply += f"\n⚠️ не распознано: {', '.join(leftover)} — добавлено в комментарий"
+    await message.answer(reply)
+    await ask_date(message, state)
 
 
 # ── Step 4: date ─────────────────────────────────────────
@@ -291,6 +330,11 @@ async def on_comment(message: Message, state: FSMContext) -> None:
             )
             return
 
+    leftover = data.get("city_leftover")
+    if leftover:
+        prefix = f"[city: {' / '.join(leftover)}] "
+        comment = f"{prefix}{comment}" if comment else prefix.rstrip()
+
     await state.update_data(comment=comment)
     await show_confirm(message, state)
 
@@ -310,6 +354,8 @@ async def show_confirm(message: Message, state: FSMContext) -> None:
     )
     if data.get("channel_name"):
         summary += f"Канал:         {data['channel_name']}\n"
+    if data.get("city"):
+        summary += f"Город:         {', '.join(data['city'])}\n"
     if data.get("comment"):
         summary += f"Комментарий:   {data['comment']}\n"
 
@@ -334,6 +380,7 @@ async def on_confirm_yes(callback: CallbackQuery, state: FSMContext) -> None:
         "responsible": data["responsible"],
         "comment": data.get("comment"),
         "channel_id": data.get("channel_id"),
+        "city": data.get("city"),
         "created_by": data["crm_user"]["id"],
     }
     result = await create_expense(payload)
