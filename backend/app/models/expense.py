@@ -1,5 +1,6 @@
 import enum
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text, CheckConstraint
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -71,6 +72,10 @@ class Expense(Base):
         server_default="planned",
     )
     comment = Column(Text, nullable=True)
+    # Multi-city per the spec: a single subscriber payment may cover several
+    # cities (e.g. cross-posted news). Per-city analytics SUM the full price
+    # for each city via UNNEST; total budget uses SUM(price) on the row.
+    city = Column(ARRAY(Text), nullable=True)
     responsible = Column(String, nullable=True)
     # CPA tracking — only for CPA categories (tg_ads/vk_ads/yandex/blogger)
     channel_id = Column(Integer, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True, index=True)
