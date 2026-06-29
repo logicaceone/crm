@@ -66,6 +66,25 @@ def budget_summary(
         key = cat.value if hasattr(cat, "value") else str(cat)
         by_category[key] = round(float(total or 0), 2)
 
+    # Per-city is subscribers-only; a single payment covering N cities
+    # contributes its full price to each city (intentional — see UI note).
+    city_q = _exp_base(db, from_, to).filter(
+        Expense.category == ExpenseCategory.subscribers,
+        Expense.city.isnot(None),
+    )
+    city_subq = city_q.with_entities(
+        func.unnest(Expense.city).label("c"),
+        Expense.price.label("p"),
+    ).subquery()
+    city_rows = (
+        db.query(city_subq.c.c, func.coalesce(func.sum(city_subq.c.p), 0))
+        .group_by(city_subq.c.c)
+        .all()
+    )
+    by_city: dict[str, float] = {
+        c: round(float(s or 0), 2) for c, s in city_rows if c
+    }
+
     return {
         "expenses": round(float(expenses), 2),
         "income": round(float(income), 2),
@@ -73,6 +92,7 @@ def budget_summary(
         "margin_pct": round(margin_pct, 2),
         "currency": "RUB",
         "by_category": by_category,
+        "by_city": by_city,
     }
 
 
@@ -113,6 +133,31 @@ def budget_monthly(
         )
         exp_by_category[r.month][key] = float(r.total or 0)
 
+    # Per-city per-month, subscribers only.
+    city_subq = (
+        _exp_base(db, from_, to)
+        .filter(
+            Expense.category == ExpenseCategory.subscribers,
+            Expense.city.isnot(None),
+        )
+        .with_entities(
+            func.to_char(Expense.date, "YYYY-MM").label("month"),
+            func.unnest(Expense.city).label("c"),
+            Expense.price.label("p"),
+        )
+        .subquery()
+    )
+    city_rows = (
+        db.query(city_subq.c.month, city_subq.c.c, func.sum(city_subq.c.p))
+        .group_by(city_subq.c.month, city_subq.c.c)
+        .all()
+    )
+    exp_by_city: dict[str, dict[str, float]] = {}
+    for month, c, total in city_rows:
+        if not c:
+            continue
+        exp_by_city.setdefault(month, {})[c] = round(float(total or 0), 2)
+
     inc_map = {r.month: float(r.total) for r in inc_rows}
     months = sorted(set(exp_total) | set(inc_map))
 
@@ -126,6 +171,7 @@ def budget_monthly(
                 k: round(v, 2)
                 for k, v in (exp_by_category.get(m) or {}).items()
             },
+            "by_city": exp_by_city.get(m, {}),
         }
         for m in months
     ]
