@@ -8,6 +8,10 @@ from collections import Counter
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
+# Register every ORM mapper before we query — Expense has relationships()
+# pointing at User and Channel, and SQLAlchemy resolves the name strings
+# lazily on first query.
+from ..models import user, channel, expense  # noqa: F401
 from ..models.expense import Expense, ExpenseCategory
 from ..services.city_normalizer import normalize_cities
 
@@ -57,8 +61,13 @@ def run(apply: bool, limit: int | None) -> int:
         if limit is not None:
             query = query.limit(limit)
 
+        # Materialize the row set up-front. yield_per uses a server-side
+        # named cursor which Postgres invalidates the moment we commit
+        # mid-iteration; for 1.5k rows the memory cost is negligible.
+        expenses = query.all()
+
         batch_pending = 0
-        for expense in query.yield_per(BATCH_SIZE):
+        for expense in expenses:
             examined += 1
 
             if expense.city is not None:
