@@ -50,12 +50,28 @@ async def fetch_csv(gid: str) -> list[dict]:
             "price":       row[2].strip(),
             "about":       row[3].strip(),
             "responsible": row[4].strip() if len(row) > 4 else "",
+            "phone":       row[5].strip() if len(row) > 5 else "",
         })
     return data
 
 
 def make_row_hash(row: dict, gid: str) -> str:
-    """Hash a row keyed by gid so the same row in two tabs stays distinct."""
+    """v2 — includes phone (column F). Two rows with identical
+    date/city/price/about/responsible but different phones now produce
+    distinct hashes, so duplicates like 'Елабуга 404 яма' from two
+    different subscribers both get imported."""
+    key = (
+        f"{gid}|{row['date']}|{row['city']}|"
+        f"{row['price']}|{row['about']}|{row['responsible']}|"
+        f"{row.get('phone', '')}"
+    )
+    return hashlib.md5(key.encode("utf-8")).hexdigest()
+
+
+def make_row_hash_legacy(row: dict, gid: str) -> str:
+    """v1 — pre-phone hash. Still checked on dedup so existing
+    SheetsImportLog rows (filled before column F was tracked) keep
+    matching and we don't re-import the entire history on next sync."""
     key = (
         f"{gid}|{row['date']}|{row['city']}|"
         f"{row['price']}|{row['about']}|{row['responsible']}"
@@ -113,8 +129,9 @@ async def sync_source(source: SheetSource, db: Session) -> dict:
             continue
 
         row_hash = make_row_hash(row, source.gid)
+        legacy_hash = make_row_hash_legacy(row, source.gid)
         if db.query(SheetsImportLog).filter(
-            SheetsImportLog.row_hash == row_hash
+            SheetsImportLog.row_hash.in_([row_hash, legacy_hash])
         ).first():
             skipped += 1
             continue
