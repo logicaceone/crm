@@ -9,6 +9,8 @@ from ..dependencies import verify_bot_token
 from ..models.user import User
 from ..models.channel import Channel
 from ..models.expense import Expense, ExpenseCategory, ExpenseStatus
+from ..activity import log_action
+from ..routers.expenses import CATEGORY_LABEL
 
 router = APIRouter(
     prefix="/bot",
@@ -95,4 +97,15 @@ def create_expense_from_bot(
     db.add(expense)
     db.commit()
     db.refresh(expense)
+
+    # Attribute to the Telegram-linked user so the action shows up in
+    # the admin activity log. Bot expenses used to insert silently.
+    if payload.created_by:
+        user = db.query(User).filter(User.id == payload.created_by).first()
+        if user:
+            label = CATEGORY_LABEL.get(expense.category, expense.category.value)
+            log_action(
+                db, user, "create", "expense", expense.id,
+                f"Из бота: {label}, {expense.price:.0f} ₽",
+            )
     return {"id": expense.id, "status": "created"}
