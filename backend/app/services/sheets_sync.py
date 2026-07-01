@@ -25,12 +25,14 @@ def _csv_url(gid: str) -> str:
 
 
 async def fetch_csv(gid: str) -> list[dict]:
-    """Pull the CSV export of a single tab and return rows as dicts.
+    """Pull the CSV export of a single tab and return data rows as dicts.
 
-    Row layout (per spec):
-      row 0 — section header ("СММ ВЫПЛАТЫ ЗА НОВОСТЬ")
-      row 1 — column names
-      row 2+ — data
+    Header layout varies across tabs — some have one header row (just
+    column names), some have two (a section title like "СММ ВЫПЛАТЫ ЗА
+    НОВОСТЬ" plus column names), some have a stray phone number in col A
+    of what should be the header. We skip any row whose col A doesn't
+    parse as a date; that reliably filters out every header shape
+    without losing the first data row.
     """
     url = _csv_url(gid)
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
@@ -41,11 +43,14 @@ async def fetch_csv(gid: str) -> list[dict]:
     rows = list(reader)
 
     data: list[dict] = []
-    for row in rows[2:]:
+    for row in rows:
         if len(row) < 4:
             continue
+        raw_date = row[0].strip()
+        if not parse_date(raw_date):
+            continue
         data.append({
-            "date":        row[0].strip(),
+            "date":        raw_date,
             "city":        row[1].strip(),
             "price":       row[2].strip(),
             "about":       row[3].strip(),
