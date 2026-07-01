@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date as date_t, datetime
 from typing import Optional
 from pydantic import BaseModel
 from ..models.expense import ExpenseCategory, ExpenseStatus
@@ -40,7 +40,7 @@ class ExpenseResponse(BaseModel):
     external_channel: Optional[ExternalChannelResponse] = None
     channel_id: Optional[int] = None
     channel: Optional[ChannelRef] = None
-    date: date
+    date: date_t
     price: float
     currency: str
     status: ExpenseStatus
@@ -62,7 +62,7 @@ class CreateExpenseRequest(BaseModel):
     category: ExpenseCategory
     external_channel_id: Optional[int] = None
     channel_id: Optional[int] = None
-    date: date
+    date: date_t
     price: float
     currency: str = "RUB"
     status: ExpenseStatus = ExpenseStatus.planned
@@ -76,7 +76,7 @@ class UpdateExpenseRequest(BaseModel):
     category: Optional[ExpenseCategory] = None
     external_channel_id: Optional[int] = None
     channel_id: Optional[int] = None
-    date: Optional[date] = None
+    date: Optional[date_t] = None
     price: Optional[float] = None
     currency: Optional[str] = None
     status: Optional[ExpenseStatus] = None
