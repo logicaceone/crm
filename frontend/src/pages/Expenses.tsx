@@ -515,7 +515,7 @@ export function Expenses() {
     </div>
   )
 
-  const colCount = canWrite ? 9 : 8
+  const colCount = canWrite ? 10 : 9
 
   const summaryTooltip = summary
     ? CATEGORY_ORDER
@@ -600,6 +600,7 @@ export function Expenses() {
               <th style={thStyle}>Площадка</th>
               <th style={thStyle}>Канал</th>
               <th style={thStyle}>Сумма</th>
+              <th style={thStyle}>Комментарий</th>
               <th style={thStyle}>Ответственный</th>
               <th style={thStyle}>Статус</th>
               {canWrite && <th style={thStyle}>Действия</th>}
@@ -684,6 +685,12 @@ export function Expenses() {
                     </td>
                     <td style={tdStyle}>
                       {e.price.toLocaleString('ru-RU', { minimumFractionDigits: 0 })} {e.currency}
+                    </td>
+                    <td
+                      style={{ ...tdStyle, color: '#8C7B6E', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={e.comment ?? ''}
+                    >
+                      {e.comment ?? '—'}
                     </td>
                     <td style={{ ...tdStyle, color: '#8C7B6E' }}>{e.responsible ?? '—'}</td>
                     <td style={tdStyle}>
