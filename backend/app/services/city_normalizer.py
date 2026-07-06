@@ -49,6 +49,7 @@ CANONICAL_CITIES: tuple[str, ...] = (
     "Мензелинск",
     "Нижнекамск",
     "Нурлат",
+    "Татарстан",
     "Тетюши",
     "Уруссу",
     "Челны",
@@ -97,7 +98,6 @@ ALIASES: dict[str, str] = {
 
 # Strings that explicitly are NOT cities — drop the city, keep raw in comment.
 NON_CITY_TOKENS: frozenset[str] = frozenset({
-    "татарстан",
     "рт",
     "теннис",
     "праздник",
@@ -159,7 +159,7 @@ def normalize_cities(raw: str | None) -> tuple[list[str], list[str]]:
         normalize_cities("Альмет-Казань")        → (["Альметьевск", "Казань"], [])
         normalize_cities("Челны(Чел из Азны)")   → (["Челны", "Азнакаево"], [])
         normalize_cities("теннис")               → ([], ["теннис"])
-        normalize_cities("Татарстан")            → ([], ["Татарстан"])
+        normalize_cities("Татарстан")            → (["Татарстан"], [])
         normalize_cities("")                     → ([], [])
         normalize_cities(None)                   → ([], [])
     """
