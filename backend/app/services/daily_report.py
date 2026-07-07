@@ -52,9 +52,13 @@ def _diff_str(diff: Optional[int]) -> str:
 
 
 def get_report_data(db: Session) -> list[_Row]:
-    """Build per-channel rows from the two newest snapshots."""
+    """Build per-channel rows from the two newest snapshots.
+
+    Order in the final report: MAX channels first, then Telegram; within
+    each platform, sorted by current subscriber count descending.
+    """
     rows: list[_Row] = []
-    channels = db.query(Channel).order_by(Channel.name).all()
+    channels = db.query(Channel).all()
 
     for ch in channels:
         # Skip snapshots where subscribers_count is NULL — those rows
@@ -89,6 +93,9 @@ def get_report_data(db: Session) -> list[_Row]:
             diff=diff,
         ))
 
+    # MAX before TG; inside each platform, biggest channels first.
+    _PLATFORM_ORDER = {"MAX": 0, "TG": 1}
+    rows.sort(key=lambda r: (_PLATFORM_ORDER.get(r.platform, 99), -r.current_subs))
     return rows
 
 
