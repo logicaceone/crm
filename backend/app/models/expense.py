@@ -16,6 +16,7 @@ class ExpenseCategory(str, enum.Enum):
     giveaway = "giveaway"
     services = "services"
     salary = "salary"
+    boost = "boost"
     other = "other"
 
 
@@ -25,6 +26,11 @@ CPA_CATEGORIES = frozenset({
     ExpenseCategory.yandex,
     ExpenseCategory.blogger,
 })
+
+# Categories that carry a `channel_id` (our channel). CPA categories track the
+# channel for invite-link/join analytics; `boost` (накрутка) just records which
+# channel the spend targets — no invite link, no CPA counters.
+CHANNEL_CATEGORIES = CPA_CATEGORIES | {ExpenseCategory.boost}
 
 
 class AdFormat(str, enum.Enum):

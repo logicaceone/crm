@@ -15,6 +15,7 @@ from ..models.expense import (
     ExpenseStatus,
     ExpenseCategory,
     CPA_CATEGORIES,
+    CHANNEL_CATEGORIES,
 )
 from ..schemas.expenses import (
     ExternalChannelResponse,
@@ -47,6 +48,7 @@ CATEGORY_LABEL = {
     ExpenseCategory.giveaway: "Подарки",
     ExpenseCategory.services: "Сервисы",
     ExpenseCategory.salary: "Зарплата",
+    ExpenseCategory.boost: "Накрутка",
     ExpenseCategory.other: "Прочие",
 }
 # Categories that require a non-empty responsible field at create/update time.
@@ -58,6 +60,7 @@ RESPONSIBLE_REQUIRED = frozenset({
     ExpenseCategory.giveaway,
     ExpenseCategory.services,
     ExpenseCategory.salary,
+    ExpenseCategory.boost,
     ExpenseCategory.other,
 })
 
@@ -270,6 +273,7 @@ def create_expense(
         payload["external_channel_id"] = None
     if data.category not in CPA_CATEGORIES:
         payload["invite_link"] = None
+    if data.category not in CHANNEL_CATEGORIES:
         payload["channel_id"] = None
 
     _validate(data.category, payload)
@@ -364,12 +368,15 @@ def update_expense(
         updates.pop("external_channel_id", None)
     if category_changing and new_category not in CPA_CATEGORIES:
         e.invite_link = None
-        e.channel_id = None
         e.joined_count = 0
         e.left_count = 0
         e.cpa_synced_at = None
-        for k in ("invite_link", "channel_id", "joined_count", "left_count"):
+        for k in ("invite_link", "joined_count", "left_count"):
             updates.pop(k, None)
+    # `boost` keeps its channel_id; only fully channel-less categories clear it.
+    if category_changing and new_category not in CHANNEL_CATEGORIES:
+        e.channel_id = None
+        updates.pop("channel_id", None)
 
     effective = {
         "external_channel_id": updates.get("external_channel_id", e.external_channel_id),

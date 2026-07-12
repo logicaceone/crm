@@ -15,13 +15,16 @@ const PER_PAGE = 15
 
 type ExpenseCategory =
   | 'tg_ads' | 'vk_ads' | 'yandex' | 'blogger'
-  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'salary' | 'other'
+  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'salary' | 'boost' | 'other'
 
 type ExpenseStatus = 'planned' | 'placed' | 'cancelled'
 
 const CPA_CATEGORIES = new Set<ExpenseCategory>(['tg_ads', 'vk_ads', 'yandex', 'blogger'])
+// Categories that carry our channel_id. CPA plus `boost` (накрутка) — boost
+// picks a channel but has no invite-link / CPA tracking.
+const CHANNEL_CATEGORIES = new Set<ExpenseCategory>(['tg_ads', 'vk_ads', 'yandex', 'blogger', 'boost'])
 const RESPONSIBLE_REQUIRED = new Set<ExpenseCategory>([
-  'subscribers', 'lunch', 'giveaway', 'services', 'salary', 'other',
+  'subscribers', 'lunch', 'giveaway', 'services', 'salary', 'boost', 'other',
 ])
 const COMMENT_REQUIRED = new Set<ExpenseCategory>(['salary', 'other'])
 
@@ -111,6 +114,7 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   giveaway: 'Подарки',
   services: 'Сервисы',
   salary: 'Зарплата',
+  boost: 'Накрутка',
   other: 'Прочие',
 }
 
@@ -124,6 +128,7 @@ const CATEGORY_BADGE_LABEL: Record<ExpenseCategory, string> = {
   giveaway: 'Подарки',
   services: 'Сервисы',
   salary: 'Зарплата',
+  boost: 'Накрутка',
   other: 'Прочие',
 }
 
@@ -137,6 +142,7 @@ const CATEGORY_BADGE: Record<ExpenseCategory, { bg: string; fg: string }> = {
   giveaway:    { bg: '#FCE7F3', fg: '#BE185D' }, // розовый
   services:    { bg: '#E5E7EB', fg: '#374151' }, // серый
   salary:      { bg: '#E0F2FE', fg: '#0369A1' }, // голубой
+  boost:       { bg: '#CCFBF1', fg: '#0D9488' }, // бирюзовый
   other:       { bg: '#E5E7EB', fg: '#374151' }, // серый
 }
 
@@ -144,7 +150,7 @@ const CATEGORY_ORDER: ExpenseCategory[] = [
   'tg_ads', 'vk_ads', 'yandex',
   'blogger', 'subscribers',
   'lunch', 'giveaway', 'services',
-  'salary', 'other',
+  'salary', 'boost', 'other',
 ]
 
 const STATUS_LABELS: Record<ExpenseStatus, string> = {
@@ -358,7 +364,8 @@ export function Expenses() {
       city: cityList.length > 0 ? cityList : null,
       external_channel_id: isBlogger && form.external_channel_id
         ? Number(form.external_channel_id) : null,
-      channel_id: isCPA && form.channel_id ? Number(form.channel_id) : null,
+      channel_id: CHANNEL_CATEGORIES.has(form.category) && form.channel_id
+        ? Number(form.channel_id) : null,
       invite_link: isCPA && form.invite_link ? form.invite_link : null,
     }
   }
@@ -857,6 +864,7 @@ function ExpenseFormModal({
   addingCh, onAddChannel, onBack, onSubmit, onClose, isEdit,
 }: ExpenseFormModalProps) {
   const isCPA = CPA_CATEGORIES.has(form.category)
+  const hasChannel = CHANNEL_CATEGORIES.has(form.category)
   const isBlogger = form.category === 'blogger'
   const respRequired = RESPONSIBLE_REQUIRED.has(form.category)
   const commentRequired = COMMENT_REQUIRED.has(form.category)
@@ -931,9 +939,9 @@ function ExpenseFormModal({
           </>
         )}
 
-        {isCPA && (
+        {hasChannel && (
           <label style={labelStyle}>
-            Наш канал (для CPA)
+            {isCPA ? 'Наш канал (для CPA)' : 'Наш канал'}
             <select value={form.channel_id} onChange={e => setForm(p => ({ ...p, channel_id: e.target.value }))}>
               <option value="">— не выбран —</option>
               {intChannels.map(ch => (

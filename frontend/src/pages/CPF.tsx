@@ -18,7 +18,7 @@ interface SummaryRow {
 
 type ExpenseCategory =
   | 'tg_ads' | 'vk_ads' | 'yandex' | 'blogger'
-  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'salary' | 'other'
+  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'salary' | 'boost' | 'other'
 
 interface ByChannelRow {
   category: ExpenseCategory
@@ -32,7 +32,7 @@ const CATEGORY_LABEL_SHORT: Record<ExpenseCategory, string> = {
   tg_ads: 'TG Ads', vk_ads: 'VK Ads', yandex: 'Яндекс',
   blogger: 'Блогеры', subscribers: 'Подписчики',
   lunch: 'Обеды', giveaway: 'Подарки',
-  services: 'Сервисы', salary: 'Зарплата', other: 'Прочие',
+  services: 'Сервисы', salary: 'Зарплата', boost: 'Накрутка', other: 'Прочие',
 }
 
 const CATEGORY_BADGE: Record<ExpenseCategory, { bg: string; fg: string }> = {
@@ -45,6 +45,7 @@ const CATEGORY_BADGE: Record<ExpenseCategory, { bg: string; fg: string }> = {
   giveaway:    { bg: '#FCE7F3', fg: '#BE185D' },
   services:    { bg: '#E5E7EB', fg: '#374151' },
   salary:      { bg: '#E0F2FE', fg: '#0369A1' },
+  boost:       { bg: '#CCFBF1', fg: '#0D9488' },
   other:       { bg: '#E5E7EB', fg: '#374151' },
 }
 

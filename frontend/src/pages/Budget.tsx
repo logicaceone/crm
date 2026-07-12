@@ -9,7 +9,7 @@ import { apiFetch } from '../lib/api'
 
 type ExpenseCategory =
   | 'tg_ads' | 'vk_ads' | 'yandex' | 'blogger'
-  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'salary' | 'other'
+  | 'subscribers' | 'lunch' | 'giveaway' | 'services' | 'salary' | 'boost' | 'other'
 
 interface Summary {
   expenses: number
@@ -32,21 +32,21 @@ interface MonthRow {
 
 const CATEGORY_ORDER: ExpenseCategory[] = [
   'tg_ads', 'vk_ads', 'yandex', 'blogger',
-  'subscribers', 'lunch', 'giveaway', 'services', 'salary', 'other',
+  'subscribers', 'lunch', 'giveaway', 'services', 'salary', 'boost', 'other',
 ]
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   tg_ads: 'TG Ads', vk_ads: 'VK Ads', yandex: 'Яндекс',
   blogger: 'Блогеры', subscribers: 'Подписчики',
   lunch: 'Обеды', giveaway: 'Подарки',
-  services: 'Сервисы', salary: 'Зарплата', other: 'Прочие',
+  services: 'Сервисы', salary: 'Зарплата', boost: 'Накрутка', other: 'Прочие',
 }
 
 const CATEGORY_COLOR: Record<ExpenseCategory, string> = {
   tg_ads: '#1D4ED8', vk_ads: '#60A5FA', yandex: '#B45309',
   blogger: '#6D28D9', subscribers: '#15803D',
   lunch: '#C2410C', giveaway: '#BE185D',
-  services: '#6B7280', salary: '#0369A1', other: '#9CA3AF',
+  services: '#6B7280', salary: '#0369A1', boost: '#0D9488', other: '#9CA3AF',
 }
 
 interface Filters {

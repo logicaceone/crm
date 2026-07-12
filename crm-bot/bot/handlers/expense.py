@@ -19,6 +19,10 @@ router = Router()
 
 CPA_CATEGORIES = {"tg_ads", "vk_ads", "yandex", "blogger"}
 
+# Categories that show the "our channel" picker. CPA plus `boost` (накрутка),
+# which records the channel the boost targets without any CPA tracking.
+CHANNEL_CATEGORIES = CPA_CATEGORIES | {"boost"}
+
 CATEGORY_NAMES = {
     "tg_ads": "📱 TG Ads",
     "vk_ads": "🎯 VK Ads",
@@ -29,6 +33,7 @@ CATEGORY_NAMES = {
     "giveaway": "🎁 Подарки",
     "services": "⚙️ Сервисы",
     "salary": "💼 Зарплата",
+    "boost": "📈 Накрутка",
     "other": "📝 Прочие",
 }
 
@@ -85,7 +90,7 @@ async def on_category(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer(f"Категория: {CATEGORY_NAMES[category]}")
     await callback.answer()
 
-    if category in CPA_CATEGORIES:
+    if category in CHANNEL_CATEGORIES:
         channels = await get_channels()
         if not channels:
             await callback.message.answer(
@@ -100,7 +105,7 @@ async def on_category(callback: CallbackQuery, state: FSMContext) -> None:
 
         await callback.message.answer(
             "📺 Шаг 2 из 5\n\n"
-            "Выберите наш канал (для CPA)\n"
+            "Выберите наш канал\n"
             f"Всего каналов: {len(channels)}",
             reply_markup=channels_keyboard(channels, page=0),
         )
@@ -209,7 +214,7 @@ async def on_city(message: Message, state: FSMContext) -> None:
 
 async def ask_date(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    step = "3" if data.get("category") in CPA_CATEGORIES else "2"
+    step = "3" if data.get("category") in CHANNEL_CATEGORIES else "2"
     await message.answer(
         f"📅 Шаг {step} из 5\n\n"
         "Введите дату расхода в формате дд.мм.гггг\n"
